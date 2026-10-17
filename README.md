@@ -1,2 +1,24 @@
-# mekatos-inventario
-registro de entrada y salida con gestor de inventarios
+# mekatos inventario
+
+> registro de entrada y salida con gestor de inventarios
+
+| | |
+|---|---|
+| **Estado** | 🟣 Entregado |
+| **Categoría** | Web |
+| **Cliente / contexto** | panaderia mekatos |
+| **Construido** | Oct 2026 |
+| **Tecnologías** | PHP · MYSQL · JAVASCRIPT |
+| **Demo** | [https://briceno.infinityfreeapp.com](https://briceno.infinityfreeapp.com) |
+
+## 💡 Idea principal
+Sistema web instalable (PWA) para un restaurante que controla la asistencia del personal, calcula las planillas de pago y lleva el inventario de loza por áreas. Los trabajadores marcan entrada y salida en un kiosco autorizado dentro del local, con PIN y foto de evidencia. Las horas se suman solas por quincena y la planilla sale lista para imprimir y firmar. Cada área tiene un código QR para hacer el inventario de mediodía y noche: el trabajador cuenta a ciegas, sin ver el stock, y si falta o sobra algo el sistema le pide explicar por qué y le envía el reporte al administrador.
+
+## 🎯 Misión
+Darle al dueño del negocio control real y confiable de las horas trabajadas, los pagos y la loza, eliminando las planillas en papel, los cálculos a mano y las pérdidas sin explicación. Todo queda registrado con hora del servidor, auditoría de cada cambio y reportes automáticos, en una herramienta sencilla que funciona desde la tablet del local y el celular de cada trabajador.
+
+## 👁️ Visión
+Convertirse en una solución accesible para pequeños negocios de la región, que puedan administrar su personal e inventario con la misma seguridad y orden de una empresa grande, sin pagar licencias costosas y desde cualquier dispositivo con internet.
+
+---
+Desarrollado por **Brayan Josua Briceño Castro** · [JOSTECH](https://github.com/Bryan2005826) · Paz de Ariporo, Casanare, Colombia
