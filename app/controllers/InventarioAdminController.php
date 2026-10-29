@@ -14,10 +14,15 @@ final class InventarioAdminController
     public function catalogo(): void
     {
         $this->preparar();
-        $areas = InventarioService::areas();
-        $areaId = (int)input('area', 0) ?: (int)($areas[0]['id'] ?? 0);
-        $area = InventarioService::area($areaId);
+        $loc = LocalService::actualId();
+        $areas = InventarioService::areas(true, $loc);
+        $area = InventarioService::area((int)input('area', 0));
+        if (!$area || (int)$area['local_id'] !== $loc) {
+            $area = $areas[0] ?? null;
+        }
+        $areaId = (int)($area['id'] ?? 0);
         view('admin/inventario_catalogo', [
+            'local'   => LocalService::actual(),
             'areas'   => $areas,
             'area'    => $area,
             'items'   => $area ? InventarioService::items($areaId, false) : [],
@@ -78,33 +83,51 @@ final class InventarioAdminController
     {
         $this->preparar();
         $id = (int)input('id');
-        $a = InventarioService::area($id);
-        $nombre = trim((string)input('nombre', ''));
-        if (!$a || mb_strlen($nombre) < 2 || mb_strlen($nombre) > 60) {
-            flash('error', 'El nombre del área debe tener entre 2 y 60 caracteres.');
-            redirect('admin/inventario', ['area' => $id]);
+        try {
+            InventarioService::editarArea($id, (string)input('nombre', ''), (string)input('ayuda_obs', ''));
+            flash('ok', 'Categoría guardada.');
+        } catch (InvalidArgumentException $e) {
+            flash('error', $e->getMessage());
         }
-        Database::update('areas', ['nombre' => $nombre], 'id = :id', ['id' => $id]);
-        Audit::log('area_editada', 'area', $id, null, ['nombre' => $a['nombre']], ['nombre' => $nombre]);
-        flash('ok', 'Área renombrada.');
         redirect('admin/inventario', ['area' => $id]);
     }
 
     public function crearArea(): void
     {
         $this->preparar();
-        $nombre = trim((string)input('nombre', ''));
-        if (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 60) {
-            flash('error', 'El nombre del área debe tener entre 2 y 60 caracteres.');
+        try {
+            $id = InventarioService::crearArea((string)input('nombre', ''), (string)input('tipo', 'inventario'), (string)input('ayuda_obs', ''));
+            flash('ok', 'Categoría creada. Agrega sus productos y descarga su QR en Códigos QR.');
+            redirect('admin/inventario', ['area' => $id]);
+        } catch (InvalidArgumentException $e) {
+            flash('error', $e->getMessage());
             redirect('admin/inventario');
         }
-        $id = Database::insert('areas', [
-            'nombre' => $nombre, 'token' => InventarioService::nuevoToken(),
-            'orden' => (int)Database::value('SELECT COALESCE(MAX(orden), 0) + 1 FROM areas'), 'activo' => 1, 'creado' => now_utc(),
-        ]);
-        Audit::log('area_creada', 'area', $id, null, null, ['nombre' => $nombre]);
-        flash('ok', 'Área creada. Descarga su QR en Códigos QR.');
-        redirect('admin/inventario', ['area' => $id]);
+    }
+
+    public function quitarArea(): void
+    {
+        $this->preparar();
+        try {
+            InventarioService::quitarArea((int)input('id'));
+            flash('ok', 'Categoría quitada. Su QR ya no funciona; el historial se conserva.');
+        } catch (InvalidArgumentException $e) {
+            flash('error', $e->getMessage());
+        }
+        redirect('admin/inventario');
+    }
+
+    public function eliminarItem(): void
+    {
+        $this->preparar();
+        $it = InventarioService::item((int)input('id'));
+        try {
+            $r = InventarioService::eliminarItem((int)input('id'));
+            flash('ok', $r === 'eliminado' ? 'Eliminado.' : 'Ya tenía inventarios registrados, así que se desactivó para conservar el historial.');
+        } catch (InvalidArgumentException $e) {
+            flash('error', $e->getMessage());
+        }
+        redirect('admin/inventario', ['area' => (int)($it['area_id'] ?? 0)]);
     }
 
     /* ---------------- Códigos QR ---------------- */
@@ -112,7 +135,7 @@ final class InventarioAdminController
     public function qr(): void
     {
         $this->preparar();
-        view('admin/qr', ['areas' => InventarioService::areas(true), 'seccion' => 'qr']);
+        view('admin/qr', ['areas' => InventarioService::areas(true, LocalService::actualId()), 'local' => LocalService::actual(), 'seccion' => 'qr']);
     }
 
     public function regenerarQr(): void
@@ -132,7 +155,7 @@ final class InventarioAdminController
     {
         $this->preparar();
         $id = (int)input('id', 0);
-        $areas = $id ? array_filter([InventarioService::area($id)]) : InventarioService::areas(true);
+        $areas = $id ? array_filter([InventarioService::area($id)]) : InventarioService::areas(true, LocalService::actualId());
         view('qr_impresion', ['areas' => array_values($areas), 'title' => 'Códigos QR'], 'impresion');
     }
 
@@ -149,12 +172,14 @@ final class InventarioAdminController
             'area_id'       => (int)input('area', 0) ?: null,
             'trabajador_id' => (int)input('trabajador', 0) ?: null,
             'turno'         => isset(InventarioService::TURNOS[(string)input('turno')]) ? input('turno') : null,
+            'tipo'          => in_array(input('tipo'), ['inventario', 'pedido'], true) ? input('tipo') : null,
+            'local_id'      => LocalService::actualId(),
         ];
         view('admin/inventarios', [
             'f'            => $f,
             'filas'        => InventarioService::historial($f),
-            'areas'        => InventarioService::areas(),
-            'trabajadores' => Database::all('SELECT id, nombre FROM trabajadores ORDER BY activo DESC, orden, nombre'),
+            'areas'        => InventarioService::areas(false, LocalService::actualId()),
+            'trabajadores' => Database::all('SELECT id, nombre FROM trabajadores WHERE local_id = ? ORDER BY activo DESC, orden, nombre', [LocalService::actualId()]),
             'seccion'      => 'inventarios',
         ]);
     }
@@ -188,9 +213,12 @@ final class InventarioAdminController
 
     private function areaPedida(): ?array
     {
-        $areas = InventarioService::areas(true);
-        $id = (int)input('area', 0) ?: (int)($areas[0]['id'] ?? 0);
-        return InventarioService::area($id);
+        $areas = InventarioService::areasInventario(LocalService::actualId());
+        $a = InventarioService::area((int)input('area', 0));
+        if (!$a || $a['tipo'] !== 'inventario' || (int)$a['local_id'] !== LocalService::actualId()) {
+            $a = $areas[0] ?? null;
+        }
+        return $a;
     }
 
     public function stock(): void
@@ -199,7 +227,7 @@ final class InventarioAdminController
         $area = $this->areaPedida();
         $hoy = hoy_local();
         view('admin/stock', [
-            'areas'       => InventarioService::areas(true),
+            'areas'       => InventarioService::areasInventario(LocalService::actualId()),
             'area'        => $area,
             'control'     => $area ? InventarioService::controlStock((int)$area['id']) : [],
             'faltantes'   => $area ? InventarioService::faltantes((new DateTimeImmutable($hoy))->modify('-30 days')->format('Y-m-d'), $hoy, (int)$area['id']) : [],
@@ -213,7 +241,7 @@ final class InventarioAdminController
         $this->preparar();
         $area = $this->areaPedida() ?? abort(404, 'El área no existe.');
         view('admin/stock_contar', [
-            'areas' => InventarioService::areas(true),
+            'areas' => InventarioService::areasInventario(LocalService::actualId()),
             'area'  => $area,
             'items' => InventarioService::items((int)$area['id']),
             'turno' => InventarioService::turnoSugerido(),
@@ -227,9 +255,7 @@ final class InventarioAdminController
         $areaId = (int)input('area_id');
         try {
             $r = InventarioService::contarAdmin($areaId, (string)input('turno', ''), (array)($_POST['l'] ?? []), (string)input('observaciones', ''), input('fijar_stock') === '1');
-            flash('ok', input('fijar_stock') === '1'
-                ? 'Conteo guardado. Esas cantidades quedaron como el stock del área; desde ahora cada inventario se compara contra ellas.'
-                : 'Conteo guardado sin cambiar el stock.');
+            flash('ok', 'Conteo guardado. Esas cantidades quedaron como las unidades que hay; el próximo turno se compara contra ellas.');
             redirect('admin/inventarios/ver', ['id' => $r['id']]);
         } catch (InvalidArgumentException $e) {
             flash('error', $e->getMessage());

@@ -45,9 +45,9 @@ final class InventarioController
         $a = $this->area();
         view('inventario/formulario', [
             'area'         => $a,
-            'trabajadores' => TrabajadorService::activos(),
+            'trabajadores' => TrabajadorService::activos((int)$a['local_id']),   // personal de ese local
             'turno'        => InventarioService::turnoSugerido(),
-            'establecimiento' => Settings::get('nombre_establecimiento'),
+            'establecimiento' => LocalService::nombre((int)$a['local_id']),
         ], 'inventario');
     }
 
@@ -55,7 +55,12 @@ final class InventarioController
     {
         $a = $this->area();
         $in = json_input();
-        $r = Auth::attemptWorker((int)($in['trabajador_id'] ?? 0), (string)($in['pin'] ?? ''), null);
+        $tid = (int)($in['trabajador_id'] ?? 0);
+        $t = TrabajadorService::buscar($tid);
+        if ($t && (int)$t['local_id'] !== (int)$a['local_id']) {
+            json_response(['ok' => false, 'error' => 'Este código QR es de ' . LocalService::nombre((int)$a['local_id']) . '.'], 401);
+        }
+        $r = Auth::attemptWorker($tid, (string)($in['pin'] ?? ''), null);
         if (!$r['ok']) {
             json_response(['ok' => false, 'error' => $r['error']], 401);
         }
@@ -78,15 +83,20 @@ final class InventarioController
         $valores = [];
         if ($borrador) {
             foreach (InventarioService::lineas((int)$borrador['id']) as $l) {
-                $valores[$l['item_id']] = ['cantidad' => $l['cantidad'], 'estado' => $l['estado'], 'observacion' => $l['observacion'], 'motivo' => $l['motivo_faltante']];
+                $valores[$l['item_id']] = ['cantidad' => $l['hay'] !== null ? InventarioService::numero($l['hay']) : $l['cantidad'], 'estado' => $l['estado'], 'observacion' => $l['observacion'], 'respuesta' => $l['respuesta']];
             }
         }
+        $esPedido = $a['tipo'] === 'pedido';
         $items = array_map(fn($it) => [
             'id'       => (int)$it['id'],
             'nombre'   => $it['nombre'],
             'tipo'     => $it['tipo'],
-            // Conteo a ciegas: el trabajador no ve cuánto debe haber
-            'nuevo'    => $it['tipo'] === 'cantidad' && $it['cantidad_esperada'] === null,
+            'unidad'   => $it['unidad'],
+            // Inventario: conteo a ciegas (no ve cuánto debe haber). Pedido: ve cuánto debe haber.
+            'nuevo'    => !$esPedido && $it['tipo'] === 'cantidad' && $it['cantidad_esperada'] === null,
+            // listas de pedido: ve el mínimo y el óptimo para comparar
+            'minimo'   => $esPedido && $it['minimo'] !== null ? InventarioService::numero($it['minimo']) : null,
+            'optimo'   => $esPedido && $it['optimo'] !== null ? InventarioService::numero($it['optimo']) : null,
             'foto'     => $it['foto'] ? url('inventario/foto', ['a' => $a['token'], 'i' => $it['id'], 'v' => substr(md5($it['foto']), 0, 6)]) : null,
         ], InventarioService::items((int)$a['id']));
         json_response([
@@ -101,6 +111,10 @@ final class InventarioController
             'estados'    => InventarioService::ESTADOS,
             'motivos'    => InventarioService::MOTIVOS_FALTA,
             'motivosSobra' => InventarioService::MOTIVOS_SOBRA,
+            'respuestas' => InventarioService::RESPUESTAS,
+            'pedido'     => $esPedido,
+            'ayudaObs'   => $a['ayuda_obs'] ?: 'Observaciones generales (opcional)',
+            'personal'   => array_map(fn($t) => ['id' => (int)$t['id'], 'nombre' => $t['nombre']], TrabajadorService::activos((int)$a['local_id'])),
         ]);
     }
 
@@ -176,6 +190,10 @@ final class InventarioController
             'archivo'     => InventarioService::nombreArchivo($inv),
             'id'          => $id,
             'correo'      => $correo,
+            'whatsapp'    => InventarioService::urlWhatsapp(InventarioService::mensajeWhatsapp($id)),
+            'whatsappNumero' => Settings::get('whatsapp_admin') !== '',
+            'pedido'      => $inv['area_tipo'] === 'pedido',
+            'porPedir'    => count(array_filter(InventarioService::lineas($id), fn($l) => (float)$l['pedir'] > 0)),
         ];
     }
 

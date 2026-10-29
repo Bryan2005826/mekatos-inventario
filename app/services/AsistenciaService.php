@@ -354,11 +354,15 @@ final class AsistenciaService
 
     /* ---------------- Consultas ---------------- */
 
-    public static function listar(?int $trabajadorId, string $desde, string $hasta, ?string $estado = null): array
+    public static function listar(?int $trabajadorId, string $desde, string $hasta, ?string $estado = null, ?int $localId = null): array
     {
         $sql = 'SELECT j.*, t.nombre, t.color FROM jornadas j JOIN trabajadores t ON t.id = j.trabajador_id
                 WHERE j.fecha BETWEEN ? AND ?';
         $p = [$desde, $hasta];
+        if ($localId) {
+            $sql .= ' AND t.local_id = ?';
+            $p[] = $localId;
+        }
         if ($trabajadorId) {
             $sql .= ' AND j.trabajador_id = ?';
             $p[] = $trabajadorId;
@@ -380,10 +384,10 @@ final class AsistenciaService
         );
     }
 
-    public static function resumenDia(): array
+    public static function resumenDia(?int $localId = null): array
     {
         $hoy = hoy_local();
-        $trabajadores = Database::all('SELECT id, nombre, color FROM trabajadores WHERE activo = 1 ORDER BY orden, nombre');
+        $trabajadores = TrabajadorService::activos($localId);
         $jornadasHoy = Database::all(
             "SELECT * FROM jornadas WHERE estado <> 'anulada' AND (fecha = ? OR estado = 'abierta') ORDER BY entrada",
             [$hoy]

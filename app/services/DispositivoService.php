@@ -25,7 +25,7 @@ final class DispositivoService
     }
 
     /** Crea un dispositivo pendiente y devuelve el código de activación en claro (se muestra una sola vez) */
-    public static function crearCodigo(string $nombre, ?int $dispositivoId = null): array
+    public static function crearCodigo(string $nombre, ?int $dispositivoId = null, ?int $localId = null): array
     {
         $codigo = '';
         for ($i = 0; $i < 8; $i++) {
@@ -39,6 +39,7 @@ final class DispositivoService
             $id = $dispositivoId;
         } else {
             $id = Database::insert('dispositivos', [
+                'local_id'      => $localId ?? LocalService::actualId(),
                 'nombre'        => $nombre,
                 'codigo_hash'   => self::hash($codigo),
                 'codigo_expira' => $expira,

@@ -18,7 +18,7 @@ final class PlanillasController
         $periodo = $this->periodoPedido();
         $filas = [];
         $totales = ['minutos' => 0, 'total_entregar' => 0, 'pendientes' => 0];
-        foreach (PlanillaService::delPeriodo($periodo['inicio']) as $p) {
+        foreach (PlanillaService::delPeriodo($periodo['inicio'], LocalService::actualId()) as $p) {
             $c = PlanillaService::calcular($p);
             $filas[] = ['p' => $p, 'c' => $c];
             $totales['minutos'] += $c['minutos'];
@@ -28,6 +28,7 @@ final class PlanillasController
         view('admin/planillas', [
             'periodo'   => $periodo,
             'periodos'  => PlanillaService::periodos(),
+            'local'     => LocalService::actual(),
             'actual'    => PlanillaService::periodoActual(),
             'filas'     => $filas,
             'totales'   => $totales,
@@ -43,8 +44,8 @@ final class PlanillasController
         $jornadas = PlanillaService::jornadas($p);
         $hermanas = Database::all(
             'SELECT p.id, t.nombre FROM planillas p JOIN trabajadores t ON t.id = p.trabajador_id
-             WHERE p.periodo_inicio = ? ORDER BY t.orden, t.nombre',
-            [$p['periodo_inicio']]
+             WHERE p.periodo_inicio = ? AND t.local_id = (SELECT local_id FROM trabajadores WHERE id = ?) ORDER BY t.orden, t.nombre',
+            [$p['periodo_inicio'], $p['trabajador_id']]
         );
         view('admin/planilla', [
             'p'        => $p,
@@ -108,7 +109,7 @@ final class PlanillasController
             $periodo = PlanillaService::periodoDe($p['periodo_inicio']);
         } else {
             $periodo = $this->periodoPedido();
-            $lista = PlanillaService::delPeriodo($periodo['inicio']);
+            $lista = PlanillaService::delPeriodo($periodo['inicio'], LocalService::actualId());
             // en "todas" se omiten trabajadores inactivos sin horas
             $lista = array_values(array_filter($lista, fn($p) => (int)$p['trabajador_activo'] === 1 || PlanillaService::calcular($p)['jornadas_total'] > 0));
         }
@@ -123,5 +124,23 @@ final class PlanillasController
             'periodo' => $periodo,
             'title'   => 'Planillas · ' . $periodo['nombre'],
         ], 'impresion');
+    }
+
+    public function rotura(): void
+    {
+        Auth::requireAdmin();
+        $id = (int)input('planilla');
+        try {
+            if (input('accion') === 'quitar') {
+                PlanillaService::quitarRotura((int)input('rotura'), (string)input('motivo', ''));
+                flash('ok', 'Se quitó de la planilla.');
+            } else {
+                PlanillaService::precioRotura((int)input('rotura'), input('precio', '0'));
+                flash('ok', 'Precio guardado. Se descuenta en el total a entregar.');
+            }
+        } catch (InvalidArgumentException $e) {
+            flash('error', $e->getMessage());
+        }
+        redirect('admin/planillas/ver', ['id' => $id]);
     }
 }

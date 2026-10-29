@@ -6,7 +6,7 @@ $secciones = [
     ['planillas', 'admin/planillas', 'Planillas'],
     ['stock', 'admin/stock', 'Control de loza'],
     ['inventarios', 'admin/inventarios', 'Historial de inventarios'],
-    ['inventario', 'admin/inventario', 'Inventario por áreas'],
+    ['inventario', 'admin/inventario', 'Categorías y productos'],
     ['qr', 'admin/qr', 'Códigos QR'],
     ['rechazos', 'admin/rechazos', 'Intentos rechazados'],
     ['dispositivos', 'admin/dispositivos', 'Kiosco'],
@@ -31,6 +31,12 @@ $seccion = $seccion ?? '';
     <span class="marca-sello" aria-hidden="true"><?= e(initials(Settings::get('nombre_establecimiento'))) ?></span>
     <span><?= e(Settings::get('nombre_establecimiento')) ?></span>
   </a>
+  <form method="post" action="<?= e(url('admin/local')) ?>" class="locales" aria-label="Local">
+    <?= Csrf::field() ?><input type="hidden" name="volver" value="<?= e($GLOBALS['route'] ?? 'admin') ?>">
+    <?php $locActual = LocalService::actualId(); foreach (LocalService::todos() as $l): ?>
+      <button type="submit" name="id" value="<?= (int)$l['id'] ?>" class="local-btn" <?= (int)$l['id'] === $locActual ? 'aria-current="true"' : '' ?>><?= e($l['nombre']) ?></button>
+    <?php endforeach; ?>
+  </form>
   <div class="admin-top-acciones">
     <a class="enlace-quieto" href="<?= e(url('admin/cuenta')) ?>"><?= e($adm['nombre'] ?? '') ?></a>
     <form method="post" action="<?= e(url('admin/salir')) ?>">

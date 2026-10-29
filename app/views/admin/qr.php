@@ -1,6 +1,6 @@
 <div class="encabezado encabezado-acciones">
   <div>
-    <h1>Códigos QR</h1>
+    <h1>Códigos QR · <?= e($local['nombre']) ?></h1>
     <p class="sub">Un código fijo por área. Imprímelo y pégalo en el lugar. El código solo abre el formulario; para registrar se necesita el PIN.</p>
   </div>
   <a class="btn btn-primario" href="<?= e(url('admin/qr/imprimir', ['auto' => 1])) ?>">Imprimir todos</a>
@@ -12,6 +12,7 @@
   <?php foreach ($areas as $a): $enlace = url('inventario', ['a' => $a['token']]); ?>
     <section class="bloque qr-tarjeta">
       <h2><?= e($a['nombre']) ?></h2>
+      <p class="meta"><?= e($local['nombre']) ?> · <?= $a['tipo'] === 'pedido' ? 'Lista de pedido' : 'Inventario' ?></p>
       <canvas class="qr-lienzo" width="300" height="300" data-qr="<?= e($enlace) ?>" data-nombre="<?= e($a['nombre']) ?>" role="img" aria-label="Código QR de <?= e($a['nombre']) ?>"></canvas>
       <p class="qr-enlace"><a href="<?= e($enlace) ?>" target="_blank" rel="noopener">Abrir el formulario</a></p>
       <div class="qr-acciones">

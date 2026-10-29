@@ -109,6 +109,7 @@ final class InstalarController
                 'usuario' => $usuario, 'nombre' => $nombre,
                 'password_hash' => password_hash($pass, PASSWORD_DEFAULT), 'activo' => 1, 'creado' => now_utc(),
             ]);
+            LocalService::asegurar();
             $iniciales = array_filter(array_map('trim', explode(',', (string)input('trabajadores', ''))));
             foreach (array_slice($iniciales, 0, 50) as $n) {
                 try {

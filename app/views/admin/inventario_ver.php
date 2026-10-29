@@ -3,6 +3,7 @@
   <div>
     <a class="volver" href="<?= e(url('admin/inventarios')) ?>">Historial de inventarios</a>
     <h1><?= e($inv['area']) ?> · <?= e(InventarioService::TURNOS[$inv['turno']]) ?></h1>
+    <p class="meta"><?= e(LocalService::nombre((int)$inv['local_id'])) ?></p>
     <p class="sub"><?= e(fmt_fecha($inv['fecha'])) ?> · <?= e($inv['trabajador']) ?> · enviado a las <?= e(utc_to_local($inv['enviado'])->format('H:i:s')) ?><?= $inv['corregido'] ? ' · <span class="estado estado-corregida">Corregido</span>' : '' ?><?= $inv['es_base'] ? ' · <span class="estado estado-abierta">Fijó stock</span>' : '' ?><?= $inv['origen'] === 'admin' ? ' · <span class="estado estado-p-cerrada">Conteo del administrador</span>' : '' ?><?= $inv['motivos_pendientes'] ? ' · <span class="estado estado-incompleta">El trabajador no explicó las diferencias</span>' : '' ?></p>
   </div>
   <div class="acciones-fila">
@@ -11,12 +12,35 @@
   </div>
 </div>
 
+<?php if ($inv['area_tipo'] === 'pedido'): $unid = []; foreach ($lineas as $l) { $unid[$l['id']] = $l['item_id'] ? (string)Database::value('SELECT unidad FROM inventario_items WHERE id = ?', [$l['item_id']]) : ''; } ?>
+<section class="bloque">
+  <h2><?= e(InventarioService::titulo($inv)) ?></h2>
+  <div class="tabla-envoltura"><table class="tabla">
+    <thead><tr><th>Producto</th><th class="num">Mínimo</th><th class="num">Debe haber</th><th class="num">Hay</th><th class="num">Pedir</th><th>Unidad</th><th>Observación</th></tr></thead>
+    <tbody>
+    <?php foreach ($lineas as $l): $pedir = (float)$l['pedir'] > 0; ?>
+      <tr class="<?= $pedir ? 'fila-dif' : '' ?>">
+        <td><strong><?= e($l['item_nombre']) ?></strong></td>
+        <td class="num"><?= e(InventarioService::numero($l['minimo'])) ?></td>
+        <td class="num"><?= e(InventarioService::numero($l['optimo'])) ?></td>
+        <td class="num"><?= e(InventarioService::numero($l['hay'])) ?></td>
+        <td class="num"><?= $pedir ? '<strong>' . e(InventarioService::numero($l['pedir'])) . '</strong>' : '—' ?></td>
+        <td><?= e($unid[$l['id']] ?? '') ?></td>
+        <td><?= e($l['observacion']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php if ($inv['observaciones']): ?><p><strong>Observaciones:</strong> <?= e($inv['observaciones']) ?></p><?php endif; ?>
+  <p><a class="btn btn-primario btn-wa" href="<?= e(InventarioService::urlWhatsapp(InventarioService::mensajeWhatsapp((int)$inv['id']))) ?>" target="_blank" rel="noopener">Reenviar por WhatsApp</a></p>
+</section>
+<?php else: ?>
 <form method="post" action="<?= e(url('admin/inventarios/corregir')) ?>" class="form">
   <?= Csrf::field() ?><input type="hidden" name="id" value="<?= (int)$inv['id'] ?>">
   <section class="bloque">
     <h2>Elementos reportados</h2>
     <div class="tabla-envoltura"><table class="tabla">
-      <thead><tr><th>Elemento</th><th class="num">Esperado</th><th>Reportado</th><th class="num">Diferencia</th><th>Estado</th><th>Por qué</th><th>Observación</th></tr></thead>
+      <thead><tr><th>Elemento</th><th class="num">Conteo anterior</th><th>Contó</th><th class="num">Diferencia</th><th>Estado</th><th>Por qué</th><th>Observación</th></tr></thead>
       <tbody>
       <?php foreach ($lineas as $l):
           $dif = ($l['tipo'] === 'cantidad' && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null) ? (int)$l['cantidad'] - (int)$l['cantidad_esperada'] : null;
@@ -27,7 +51,7 @@
           <td><?php if ($l['tipo'] === 'cantidad'): ?><input class="input-corto" type="number" min="0" name="l[<?= (int)$l['id'] ?>][cantidad]" value="<?= e($l['cantidad']) ?>" aria-label="Cantidad de <?= e($l['item_nombre']) ?>"><?php else: ?><span class="meta">n/a</span><?php endif; ?></td>
           <td class="num"><?= $dif === null ? '—' : ($dif > 0 ? '+' . $dif : $dif) ?></td>
           <td><select name="l[<?= (int)$l['id'] ?>][estado]" aria-label="Estado de <?= e($l['item_nombre']) ?>"><?php foreach ($estados as $k => $v): ?><option value="<?= $k ?>" <?= $l['estado'] === $k ? 'selected' : '' ?>><?= $v ?></option><?php endforeach; ?></select></td>
-          <td><?php if ($l['es_base']): ?><span class="estado estado-abierta">Stock inicial</span><?php elseif ($dif !== null && $dif !== 0): ?><select name="l[<?= (int)$l['id'] ?>][motivo]" aria-label="Motivo de <?= e($l['item_nombre']) ?>"><option value="">Sin motivo</option><?php foreach ($dif < 0 ? InventarioService::MOTIVOS_FALTA : InventarioService::MOTIVOS_SOBRA as $k => $v): ?><option value="<?= $k ?>" <?= $l['motivo_faltante'] === $k ? 'selected' : '' ?>><?= $v ?></option><?php endforeach; ?></select><?php else: ?><span class="meta">—</span><?php endif; ?></td>
+          <td><?php if ($l['es_base']): ?><span class="estado estado-abierta">Stock inicial</span><?php elseif ($dif !== null && $dif !== 0): ?><select name="l[<?= (int)$l['id'] ?>][motivo]" aria-label="Motivo de <?= e($l['item_nombre']) ?>"><option value="">Sin motivo</option><?php foreach ($dif < 0 ? InventarioService::MOTIVOS_FALTA : InventarioService::MOTIVOS_SOBRA as $k => $v): ?><option value="<?= $k ?>" <?= $l['motivo_faltante'] === $k ? 'selected' : '' ?>><?= $v ?></option><?php endforeach; ?></select><?php else: ?><span class="meta">—</span><?php endif; ?><?php if (($l['responsable_id'] || $l['responsable_otro']) && $l['motivo_faltante'] === 'roto'): ?><br><strong>Lo partió: <?= e($l['responsable_id'] ? (string)Database::value('SELECT nombre FROM trabajadores WHERE id = ?', [$l['responsable_id']]) : $l['responsable_otro']) ?></strong><?php endif; ?><?php if ($l['respuesta'] !== null): ?><strong><?= e(InventarioService::RESPUESTAS[$l['respuesta']] ?? $l['respuesta']) ?></strong><?php endif; ?></td>
           <td><input name="l[<?= (int)$l['id'] ?>][observacion]" maxlength="255" value="<?= e($l['observacion']) ?>" aria-label="Observación de <?= e($l['item_nombre']) ?>"></td>
         </tr>
       <?php endforeach; ?>
@@ -42,6 +66,7 @@
     <button class="btn btn-secundario" type="submit">Guardar corrección</button>
   </section>
 </form>
+<?php endif; ?>
 
 <section class="bloque">
   <h2>Envío y cambios</h2>

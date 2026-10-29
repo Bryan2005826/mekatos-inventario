@@ -6,30 +6,59 @@ final class InventarioService
 {
     public const TURNOS = ['mediodia' => 'Mediodía', 'noche' => 'Noche'];
     public const ESTADOS = ['bien' => 'Bien', 'novedad' => 'Con novedad', 'danado' => 'Dañado'];
-    /** Por qué falta */
+    /** Por qué hay menos que en el conteo anterior */
     public const MOTIVOS_FALTA = [
-        'roto'      => 'Se rompió',
-        'perdido'   => 'No aparece',
-        'otra_area' => 'Está en otra área',
-        'en_uso'    => 'En lavado o en uso',
-        'otro'      => 'Otro motivo',
+        'roto'       => 'Se rompió',
+        'mal_conteo' => 'El turno anterior contó mal',
+        'perdido'    => 'No aparece',
+        'otro'       => 'Otro motivo',
     ];
-    /** Por qué sobra */
+    /** Por qué hay más que en el conteo anterior */
     public const MOTIVOS_SOBRA = [
-        'aparecio'    => 'Apareció lo que faltaba',
-        'de_otra_area'=> 'Lo trajeron de otra área',
-        'nuevo'       => 'Llegó nuevo',
-        'mal_conteo'  => 'El conteo anterior estaba mal',
-        'otro_sobra'  => 'Otro motivo',
+        'compro'     => 'El dueño compró loza',
+        'mal_conteo' => 'El turno anterior contó mal',
     ];
-    public const MOTIVOS = self::MOTIVOS_FALTA + self::MOTIVOS_SOBRA;
+    /** Motivos de versiones anteriores (para mostrar el historial) */
+    private const MOTIVOS_ANTES = [
+        'otra_area' => 'Está en otra área', 'en_uso' => 'En lavado o en uso', 'aparecio' => 'Apareció lo que faltaba',
+        'de_otra_area' => 'Lo trajeron de otra área', 'nuevo' => 'Llegó nuevo', 'otro_sobra' => 'Otro motivo',
+    ];
+    public const MOTIVOS = self::MOTIVOS_FALTA + self::MOTIVOS_SOBRA + self::MOTIVOS_ANTES;
     /** Nombre del autor: trabajador o administrador */
     private const AUTOR = "COALESCE(t.nombre, 'Administrador') AS trabajador";
 
+    public const TIPOS_ITEM = [
+        'cantidad' => 'Cantidad (se cuenta)',
+        'estado'   => 'Solo estado (bien / novedad / dañado)',
+        'pregunta' => 'Pregunta (Sí / Poco / No)',
+        'texto'    => 'Respuesta escrita',
+    ];
+    public const RESPUESTAS = ['si' => 'Sí', 'poco' => 'Poco', 'no' => 'No'];
+    public const TIPOS_AREA = ['inventario' => 'Inventario (loza y utensilios)', 'pedido' => 'Lista de pedido'];
+
+    /** Catálogo del establecimiento: área => [tipo, ayuda de novedades, [nombre => tipo de producto]] */
     private const SEMILLA = [
-        'Cocina'       => ['Plato grande', 'Plato mediano', 'Plato pequeño'],
-        'Fríos'        => ['Vaso de 14 onzas', 'Vaso de vidrio'],
-        'Caja o greca' => ['Pocillo pequeño', 'Pocillo mediano', 'Pocillo grande'],
+        'Fríos' => ['inventario', 'Novedades de Fríos (ej.: se partió la cuchilla, falta algo)', [
+            'Vaso 14 oz' => 'cantidad', 'Copa aromática' => 'cantidad', 'Vaso cervecero' => 'cantidad', 'Copa pequeña' => 'cantidad',
+            'Ceniceros' => 'cantidad', 'Jarras' => 'cantidad', 'Vaso 7 oz plástico' => 'cantidad', 'Shot' => 'cantidad',
+        ]],
+        'Cocina' => ['inventario', 'Novedades de cocina: carne, pollo, empanadas, etc.', [
+            'Plato ovalado' => 'cantidad', 'Plato rectangular' => 'cantidad', 'Plato redondo' => 'cantidad',
+            'Plato sopa' => 'cantidad', 'Taza de papas' => 'cantidad', 'Salseros' => 'cantidad',
+        ]],
+        'Greca' => ['inventario', 'Alguna novedad de greca', [
+            'Pocillo tinto' => 'cantidad', 'Pocillo chocolatero' => 'cantidad', 'Platos' => 'cantidad', 'Pocillo expreso' => 'cantidad',
+            'Pocillo aluminio' => 'cantidad', 'Platos de pan' => 'cantidad', 'Pocillo migao' => 'cantidad',
+        ]],
+        'Caja' => ['inventario', 'Observaciones de caja', [
+            '¿Te quedan monedas o sencillo?' => 'pregunta', '¿Te quedan hojas de arqueo?' => 'pregunta', '¿Cuánto café queda?' => 'texto',
+        ]],
+        // Listas de pedido: los productos se agregan cuando lleguen los formatos
+        'Gaseosa'       => ['pedido', 'Observaciones del pedido', []],
+        'Plásticos'     => ['pedido', 'Observaciones del pedido', []],
+        'Almacén'       => ['pedido', 'Observaciones del pedido', []],
+        'Pulpas'        => ['pedido', 'Observaciones del pedido', []],
+        'Salsamentaria' => ['pedido', 'Observaciones del pedido', []],
     ];
 
     /** Crea las tablas si faltan (actualización desde etapas anteriores) y las áreas iniciales */
@@ -44,19 +73,123 @@ final class InventarioService
             $schema = is_file(APP_PATH . '/schema.sql') ? APP_PATH . '/schema.sql' : ROOT_PATH . '/database/schema.sql';
             Database::ejecutarScript($schema);
         }
+        LocalService::asegurar();
         self::migrar();
-        if ((int)Database::value('SELECT COUNT(*) FROM areas') === 0) {
-            $orden = 0;
-            foreach (self::SEMILLA as $area => $items) {
-                $aid = Database::insert('areas', ['nombre' => $area, 'token' => self::nuevoToken(), 'orden' => ++$orden, 'activo' => 1, 'creado' => now_utc()]);
-                foreach ($items as $i => $nombre) {
-                    Database::insert('inventario_items', [
-                        'area_id' => $aid, 'nombre' => $nombre, 'tipo' => 'cantidad', 'orden' => $i + 1,
-                        'activo' => 1, 'creado' => now_utc(), 'actualizado' => now_utc(),
-                    ]);
-                }
+        if (Settings::get('catalogo_mekatos') !== '1') {
+            Database::transaction(fn() => self::cargarCatalogo());
+            Settings::set('catalogo_mekatos', '1');
+        }
+        if (Settings::get('catalogo_v2') !== '1') {
+            Database::transaction(fn() => CatalogoMekatos::cargar());
+            Settings::set('catalogo_v2', '1');
+        }
+    }
+
+    /**
+     * Carga el catálogo del establecimiento. Los productos de prueba anteriores se borran
+     * (o se desactivan si ya tienen inventarios, para no perder el historial).
+     * Las áreas existentes conservan su código QR.
+     */
+    private static function cargarCatalogo(): void
+    {
+        $existentes = (int)Database::value('SELECT COUNT(*) FROM areas') > 0;
+        if ($existentes) {
+            Database::run("UPDATE areas SET nombre = 'Greca' WHERE nombre = 'Caja o greca'");
+            foreach (Database::all('SELECT id FROM inventario_items') as $it) {
+                self::eliminarItemInterno((int)$it['id']);
             }
         }
+        $orden = 0;
+        foreach (self::SEMILLA as $nombre => [$tipo, $ayuda, $items]) {
+            $orden++;
+            $a = Database::one('SELECT * FROM areas WHERE nombre = ? AND local_id = 1', [$nombre]);
+            if ($a) {
+                Database::update('areas', ['tipo' => $tipo, 'ayuda_obs' => $ayuda, 'orden' => $orden, 'activo' => 1], 'id = :id', ['id' => $a['id']]);
+                $aid = (int)$a['id'];
+            } else {
+                $aid = Database::insert('areas', [
+                    'local_id' => 1, 'nombre' => $nombre, 'token' => self::nuevoToken(), 'tipo' => $tipo, 'ayuda_obs' => $ayuda,
+                    'orden' => $orden, 'activo' => 1, 'creado' => now_utc(),
+                ]);
+            }
+            $i = 0;
+            foreach ($items as $item => $tipoItem) {
+                Database::insert('inventario_items', [
+                    'area_id' => $aid, 'nombre' => $item, 'tipo' => $tipoItem, 'orden' => ++$i,
+                    'activo' => 1, 'creado' => now_utc(), 'actualizado' => now_utc(),
+                ]);
+            }
+        }
+        if ($existentes) {
+            Audit::log('catalogo_cargado', null, null, 'Catálogo de Fríos, Cocina, Greca, Caja y listas de pedido');
+        }
+    }
+
+    /** Borra un producto sin historial; si ya tiene inventarios lo desactiva. Devuelve true si lo borró. */
+    public static function eliminarItemInterno(int $id): bool
+    {
+        $usado = (int)Database::value('SELECT COUNT(*) FROM inventario_lineas l JOIN inventarios i ON i.id = l.inventario_id WHERE l.item_id = ? AND i.estado = \'enviado\'', [$id]) > 0;
+        if ($usado) {
+            Database::update('inventario_items', ['activo' => 0, 'actualizado' => now_utc()], 'id = :id', ['id' => $id]);
+            return false;
+        }
+        $foto = Database::value('SELECT foto FROM inventario_items WHERE id = ?', [$id]);
+        if ($r = self::rutaFoto($foto ? (string)$foto : null)) {
+            @unlink($r);
+        }
+        Database::run('DELETE FROM stock_movimientos WHERE item_id = ?', [$id]);
+        Database::run('UPDATE inventario_lineas SET item_id = NULL WHERE item_id = ?', [$id]);
+        Database::run('DELETE FROM inventario_items WHERE id = ?', [$id]);
+        return true;
+    }
+
+    public static function eliminarItem(int $id): string
+    {
+        $it = self::item($id) ?? throw new InvalidArgumentException('El elemento no existe.');
+        $borrado = self::eliminarItemInterno($id);
+        Audit::log($borrado ? 'item_eliminado' : 'item_desactivado', 'inventario_item', $id, null, ['nombre' => $it['nombre']], null);
+        return $borrado ? 'eliminado' : 'desactivado';
+    }
+
+    public static function crearArea(string $nombre, string $tipo, string $ayuda, ?int $localId = null): int
+    {
+        $localId ??= LocalService::actualId();
+        $nombre = trim(preg_replace('/\s+/', ' ', $nombre));
+        if (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 60) {
+            throw new InvalidArgumentException('El nombre de la categoría debe tener entre 2 y 60 caracteres.');
+        }
+        if (Database::value('SELECT 1 FROM areas WHERE nombre = ? AND activo = 1 AND local_id = ?', [$nombre, $localId])) {
+            throw new InvalidArgumentException('Ya existe una categoría con ese nombre en este local.');
+        }
+        $id = Database::insert('areas', [
+            'local_id' => $localId, 'nombre' => $nombre, 'token' => self::nuevoToken(), 'tipo' => isset(self::TIPOS_AREA[$tipo]) ? $tipo : 'inventario',
+            'ayuda_obs' => mb_substr(trim($ayuda), 0, 160) ?: null,
+            'orden' => (int)Database::value('SELECT COALESCE(MAX(orden), 0) + 1 FROM areas WHERE local_id = ?', [$localId]), 'activo' => 1, 'creado' => now_utc(),
+        ]);
+        Audit::log('area_creada', 'area', $id, null, null, ['nombre' => $nombre, 'tipo' => $tipo, 'local' => LocalService::nombre($localId)]);
+        return $id;
+    }
+
+    public static function editarArea(int $id, string $nombre, string $ayuda): void
+    {
+        $a = self::area($id) ?? throw new InvalidArgumentException('La categoría no existe.');
+        $nombre = trim(preg_replace('/\s+/', ' ', $nombre));
+        if (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 60) {
+            throw new InvalidArgumentException('El nombre de la categoría debe tener entre 2 y 60 caracteres.');
+        }
+        if (Database::value('SELECT 1 FROM areas WHERE nombre = ? AND activo = 1 AND local_id = ? AND id <> ?', [$nombre, $a['local_id'], $id])) {
+            throw new InvalidArgumentException('Ya existe una categoría con ese nombre en este local.');
+        }
+        Database::update('areas', ['nombre' => $nombre, 'ayuda_obs' => mb_substr(trim($ayuda), 0, 160) ?: null], 'id = :id', ['id' => $id]);
+        Audit::log('area_editada', 'area', $id, null, ['nombre' => $a['nombre'], 'ayuda' => $a['ayuda_obs']], ['nombre' => $nombre, 'ayuda' => $ayuda]);
+    }
+
+    /** Quita la categoría (su QR deja de funcionar); el historial se conserva */
+    public static function quitarArea(int $id): void
+    {
+        $a = self::area($id) ?? throw new InvalidArgumentException('La categoría no existe.');
+        Database::update('areas', ['activo' => 0], 'id = :id', ['id' => $id]);
+        Audit::log('area_quitada', 'area', $id, null, ['nombre' => $a['nombre']], null);
     }
 
     /** Cambios de estructura para instalaciones anteriores (stock y faltantes) */
@@ -77,9 +210,31 @@ final class InventarioService
             $pdo->exec('ALTER TABLE inventario_lineas ADD motivo_faltante VARCHAR(20) NULL AFTER observacion,
                         ADD es_base TINYINT(1) NOT NULL DEFAULT 0 AFTER motivo_faltante');
         }
-        if (!Database::value("SHOW TABLES LIKE 'stock_movimientos'")) {
+        if (!$col('areas', 'tipo')) {
+            $pdo->exec("ALTER TABLE areas ADD tipo ENUM('inventario','pedido') NOT NULL DEFAULT 'inventario' AFTER token, ADD ayuda_obs VARCHAR(160) NULL AFTER tipo");
+        }
+        if (!$col('inventario_items', 'unidad')) {
+            $pdo->exec("ALTER TABLE inventario_items MODIFY tipo ENUM('cantidad','estado','pregunta','texto') NOT NULL DEFAULT 'cantidad',
+                        ADD unidad VARCHAR(20) NULL AFTER cantidad_esperada, ADD precio DECIMAL(12,2) NULL AFTER unidad");
+        }
+        if (!$col('inventario_lineas', 'respuesta')) {
+            $pdo->exec("ALTER TABLE inventario_lineas MODIFY tipo ENUM('cantidad','estado','pregunta','texto') NOT NULL DEFAULT 'cantidad',
+                        ADD respuesta VARCHAR(255) NULL AFTER cantidad, ADD pedir INT NULL AFTER respuesta,
+                        ADD responsable_id INT UNSIGNED NULL AFTER pedir, ADD responsable_otro VARCHAR(120) NULL AFTER responsable_id");
+        }
+        if (!Database::value("SHOW TABLES LIKE 'stock_movimientos'") || !Database::value("SHOW TABLES LIKE 'roturas'")) {
             $schema = is_file(APP_PATH . '/schema.sql') ? APP_PATH . '/schema.sql' : ROOT_PATH . '/database/schema.sql';
             Database::ejecutarScript($schema);
+        }
+        if (!$col('inventario_items', 'minimo')) {
+            $pdo->exec('ALTER TABLE inventario_items ADD minimo DECIMAL(10,2) NULL AFTER precio, ADD optimo DECIMAL(10,2) NULL AFTER minimo');
+        }
+        if (!$col('inventario_lineas', 'hay')) {
+            $pdo->exec('ALTER TABLE inventario_lineas MODIFY pedir DECIMAL(10,2) NULL,
+                        ADD hay DECIMAL(10,2) NULL AFTER respuesta, ADD minimo DECIMAL(10,2) NULL AFTER hay, ADD optimo DECIMAL(10,2) NULL AFTER minimo');
+        }
+        if (!str_contains((string)(Database::one("SHOW COLUMNS FROM stock_movimientos LIKE 'tipo'")['Type'] ?? ''), 'conteo')) {
+            $pdo->exec("ALTER TABLE stock_movimientos MODIFY tipo ENUM('base','baja','ingreso','ajuste','reinicio','conteo') NOT NULL");
         }
     }
 
@@ -90,9 +245,23 @@ final class InventarioService
 
     /* ---------------- Áreas e ítems ---------------- */
 
-    public static function areas(bool $soloActivas = false): array
+    /** Categorías; con $localId, solo las de ese local */
+    public static function areas(bool $soloActivas = false, ?int $localId = null): array
     {
-        return Database::all('SELECT * FROM areas' . ($soloActivas ? ' WHERE activo = 1' : '') . ' ORDER BY orden, nombre');
+        $w = [];
+        if ($soloActivas) {
+            $w[] = 'activo = 1';
+        }
+        if ($localId) {
+            $w[] = 'local_id = ' . (int)$localId;
+        }
+        return Database::all('SELECT * FROM areas' . ($w ? ' WHERE ' . implode(' AND ', $w) : '') . ' ORDER BY orden, nombre');
+    }
+
+    /** Categorías de inventario (no listas de pedido) */
+    public static function areasInventario(?int $localId = null): array
+    {
+        return array_values(array_filter(self::areas(true, $localId), fn($a) => $a['tipo'] === 'inventario'));
     }
 
     public static function area(int $id): ?array
@@ -128,16 +297,45 @@ final class InventarioService
             throw new InvalidArgumentException('El nombre del elemento debe tener entre 2 y 80 caracteres.');
         }
         $area = self::area((int)($d['area_id'] ?? 0)) ?? throw new InvalidArgumentException('Selecciona un área válida.');
-        $tipo = ($d['tipo'] ?? 'cantidad') === 'estado' ? 'estado' : 'cantidad';
-        $esp = trim((string)($d['cantidad_esperada'] ?? ''));
+        $tipo = isset(self::TIPOS_ITEM[$d['tipo'] ?? '']) ? $d['tipo'] : 'cantidad';
+        if ($area['tipo'] === 'pedido') {
+            $tipo = 'cantidad';   // en las listas de pedido todo se cuenta
+        }
+        $esp = $area['tipo'] === 'pedido' ? '' : trim((string)($d['cantidad_esperada'] ?? ''));
         if ($esp !== '' && (!ctype_digit($esp) || (int)$esp > 100000)) {
             throw new InvalidArgumentException('La cantidad esperada debe ser un número entero.');
+        }
+        $dec = function (string $campo, string $etiqueta) use ($d): ?float {
+            $v = str_replace(',', '.', trim((string)($d[$campo] ?? '')));
+            if ($v === '') {
+                return null;
+            }
+            if (preg_match('#^(\d+)/(\d+)$#', $v, $m) && (int)$m[2] > 0) {   // admite 1/2
+                return round((int)$m[1] / (int)$m[2], 2);
+            }
+            if (!is_numeric($v) || (float)$v < 0 || (float)$v > 100000) {
+                throw new InvalidArgumentException("$etiqueta debe ser un número (puede llevar decimales, como 0.5).");
+            }
+            return round((float)$v, 2);
+        };
+        $minimo = $area['tipo'] === 'pedido' ? $dec('minimo', 'El mínimo') : null;
+        $optimo = $area['tipo'] === 'pedido' ? $dec('optimo', 'La cantidad óptima') : null;
+        if ($minimo !== null && $optimo !== null && $minimo > $optimo) {
+            throw new InvalidArgumentException('El mínimo no puede ser mayor que la cantidad óptima.');
+        }
+        $precio = str_replace(['$', '.', ' '], '', trim((string)($d['precio'] ?? '')));
+        if ($precio !== '' && (!ctype_digit($precio) || (int)$precio > 100000000)) {
+            throw new InvalidArgumentException('El precio debe ser un número entero, sin decimales.');
         }
         return [
             'area_id'           => (int)$area['id'],
             'nombre'            => $nombre,
             'tipo'              => $tipo,
             'cantidad_esperada' => ($tipo === 'cantidad' && $esp !== '') ? (int)$esp : null,
+            'unidad'            => $tipo === 'cantidad' ? (mb_substr(trim((string)($d['unidad'] ?? '')), 0, 20) ?: null) : null,
+            'precio'            => $tipo === 'cantidad' && $precio !== '' && $area['tipo'] !== 'pedido' ? (int)$precio : null,
+            'minimo'            => $minimo,
+            'optimo'            => $optimo,
             'orden'             => max(0, min(999, (int)($d['orden'] ?? 0))),
         ];
     }
@@ -284,19 +482,51 @@ final class InventarioService
      */
     private static function normalizarLineas(int $areaId, array $datos, bool $exigirCompleto): array
     {
+        $esPedido = (self::area($areaId)['tipo'] ?? 'inventario') === 'pedido';
         $lineas = [];
         foreach (self::items($areaId) as $it) {
             $d = $datos[$it['id']] ?? $datos[(string)$it['id']] ?? [];
             $cant = trim((string)($d['cantidad'] ?? ''));
+            $resp = mb_substr(trim((string)($d['respuesta'] ?? '')), 0, 255);
+            if ($it['tipo'] === 'pregunta' && $resp !== '' && !isset(self::RESPUESTAS[$resp])) {
+                throw new InvalidArgumentException('Respuesta no válida en "' . $it['nombre'] . '".');
+            }
+            if ($exigirCompleto && in_array($it['tipo'], ['pregunta', 'texto'], true) && $resp === '') {
+                throw new InvalidArgumentException('Responde: ' . $it['nombre']);
+            }
             $estado = (string)($d['estado'] ?? '');
             $obs = mb_substr(trim((string)($d['observacion'] ?? '')), 0, 255);
             $motivo = '';   // el motivo se pregunta después de enviar el conteo
+            if ($esPedido) {
+                // Listas de pedido: se cuenta lo que hay (admite medios: 0.5) y se calcula cuánto pedir
+                $cant = str_replace(',', '.', $cant);
+                if (preg_match('#^(\d+)/(\d+)$#', $cant, $m) && (int)$m[2] > 0) {
+                    $cant = (string)round((int)$m[1] / (int)$m[2], 2);
+                }
+                if ($cant !== '' && (!is_numeric($cant) || (float)$cant < 0 || (float)$cant > 100000)) {
+                    throw new InvalidArgumentException('Lo que hay de "' . $it['nombre'] . '" debe ser un número (puedes usar 0.5 para medio).');
+                }
+                if ($exigirCompleto && $cant === '') {
+                    throw new InvalidArgumentException('Falta contar "' . $it['nombre'] . '". Si no hay, escribe 0.');
+                }
+                $hay = $cant !== '' ? round((float)$cant, 2) : null;
+                $lineas[] = [
+                    'item_id' => (int)$it['id'], 'item_nombre' => $it['nombre'], 'tipo' => 'cantidad',
+                    'cantidad_esperada' => null, 'cantidad' => null, 'respuesta' => null,
+                    'hay' => $hay, 'minimo' => $it['minimo'], 'optimo' => $it['optimo'],
+                    'pedir' => $hay !== null ? self::cuantoPedir($hay, $it['minimo'], $it['optimo']) : null,
+                    'estado' => $exigirCompleto ? 'bien' : null, 'observacion' => $obs !== '' ? $obs : null,
+                    'motivo_faltante' => null, 'es_base' => 0,
+                ];
+                continue;
+            }
             if ($cant !== '' && (!ctype_digit($cant) || (int)$cant > 100000)) {
                 throw new InvalidArgumentException('La cantidad de "' . $it['nombre'] . '" debe ser un número entero.');
             }
 
             $esperada = $it['cantidad_esperada'] !== null ? (int)$it['cantidad_esperada'] : null;
             // Primer conteo de un elemento sin stock definido: esa cantidad queda como stock
+            // (en las listas de pedido el "debe haber" lo pone el administrador)
             $esBase = $it['tipo'] === 'cantidad' && $esperada === null && $cant !== '';
             $falta = ($it['tipo'] === 'cantidad' && $esperada !== null && $cant !== '') ? $esperada - (int)$cant : 0;
             // El motivo debe corresponder: de faltante si falta, de sobrante si sobra
@@ -324,6 +554,9 @@ final class InventarioService
                 'tipo'              => $it['tipo'],
                 'cantidad_esperada' => $esBase ? (int)$cant : $esperada,
                 'cantidad'          => $it['tipo'] === 'cantidad' && $cant !== '' ? (int)$cant : null,
+                'respuesta'         => in_array($it['tipo'], ['pregunta', 'texto'], true) && $resp !== '' ? $resp : null,
+                'hay'               => null, 'minimo' => null, 'optimo' => null,
+                'pedir'             => null,
                 'estado'            => $estado !== '' ? $estado : ($exigirCompleto ? 'bien' : null),
                 'observacion'       => $obs !== '' ? $obs : null,
                 'motivo_faltante'   => $falta !== 0 && $motivo !== '' ? $motivo : null,
@@ -336,11 +569,54 @@ final class InventarioService
         return $lineas;
     }
 
+    /**
+     * Cuánto pedir: si lo que hay llega al mínimo (o menos), se pide lo que falta para el óptimo.
+     * Sin mínimo, se pide cuando hay menos del óptimo. Sin óptimo, se completa el mínimo.
+     */
+    public static function cuantoPedir(float $hay, $minimo, $optimo): float
+    {
+        $min = $minimo !== null && $minimo !== '' ? (float)$minimo : null;
+        $opt = $optimo !== null && $optimo !== '' ? (float)$optimo : null;
+        $meta = $opt ?? $min;
+        if ($meta === null) {
+            return 0.0;
+        }
+        $toca = $min !== null ? $hay <= $min : $hay < $meta;
+        return $toca ? max(0.0, round($meta - $hay, 2)) : 0.0;
+    }
+
+    /** 1.50 → "1½" ; 2.00 → "2" ; 0.25 → "0.25" */
+    /** "Pedido Cocina" (sin repetir "Pedido" si la lista ya se llama así) */
+    public static function titulo(array $inv): string
+    {
+        if (($inv['area_tipo'] ?? '') !== 'pedido') {
+            return 'Inventario ' . $inv['area'];
+        }
+        return str_starts_with(mb_strtolower($inv['area']), 'pedido') ? $inv['area'] : 'Pedido ' . $inv['area'];
+    }
+
+    public static function numero($n): string
+    {
+        if ($n === null || $n === '') {
+            return '—';
+        }
+        $f = round((float)$n, 2);
+        $ent = (int)floor($f);
+        $dec = round($f - $ent, 2);
+        if ($dec == 0.0) {
+            return (string)$ent;
+        }
+        if ($dec == 0.5) {
+            return ($ent ? $ent : '') . '½';
+        }
+        return rtrim(rtrim(number_format($f, 2, '.', ''), '0'), '.');
+    }
+
     public static function contarDiferencias(array $lineas): int
     {
         $n = 0;
         foreach ($lineas as $l) {
-            if (($l['tipo'] === 'cantidad' && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null && (int)$l['cantidad'] !== (int)$l['cantidad_esperada'])
+            if (($l['tipo'] === 'cantidad' && ($l['hay'] ?? null) === null && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null && (int)$l['cantidad'] !== (int)$l['cantidad_esperada'])
                 || in_array($l['estado'], ['novedad', 'danado'], true)) {
                 $n++;
             }
@@ -411,7 +687,7 @@ final class InventarioService
             }
             self::guardarLineas($id, $lineas);
             $nombreT = (string)Database::value('SELECT nombre FROM trabajadores WHERE id = ?', [$trabajadorId]);
-            if (self::aplicarBase($lineas, $id, $nombreT, false)) {
+            if (self::aplicarConteo($lineas, $id, $nombreT)) {
                 Database::update('inventarios', ['es_base' => 1], 'id = :id', ['id' => $id]);
             }
             // otros borradores del mismo turno quedan sin efecto
@@ -431,16 +707,39 @@ final class InventarioService
     public static function preguntas(int $inventarioId): array
     {
         $out = [];
+        $inv = Database::one('SELECT a.tipo FROM inventarios i JOIN areas a ON a.id = i.area_id WHERE i.id = ?', [$inventarioId]);
+        if (($inv['tipo'] ?? '') === 'pedido') {
+            return [];
+        }
         foreach (self::lineas($inventarioId) as $l) {
-            if ($l['es_base'] || $l['cantidad_esperada'] === null || $l['cantidad'] === null) {
+            if ($l['es_base'] || $l['tipo'] !== 'cantidad' || $l['cantidad_esperada'] === null || $l['cantidad'] === null) {
                 continue;
             }
             $d = (int)$l['cantidad'] - (int)$l['cantidad_esperada'];
             if ($d !== 0) {
-                $out[] = ['linea' => (int)$l['id'], 'nombre' => $l['item_nombre'], 'dif' => $d, 'contado' => (int)$l['cantidad'], 'motivo' => $l['motivo_faltante']];
+                $ant = $l['item_id'] ? self::conteoAnterior($inventarioId, (int)$l['item_id']) : null;
+                $out[] = ['linea' => (int)$l['id'], 'nombre' => $l['item_nombre'], 'dif' => $d, 'contado' => (int)$l['cantidad'],
+                    'antes' => (int)$l['cantidad_esperada'], 'motivo' => $l['motivo_faltante'],
+                    'anterior' => $ant ? $ant['trabajador'] . ' (' . mb_strtolower(self::TURNOS[$ant['turno']]) . ($ant['fecha'] !== self::buscar($inventarioId)['fecha'] ? ' del ' . fmt_fecha($ant['fecha']) : '') . ')' : null];
             }
         }
         return $out;
+    }
+
+    /** Quién hizo el conteo anterior de ese elemento (el que dejó el stock contra el que se compara) */
+    public static function conteoAnterior(int $inventarioId, int $itemId): ?array
+    {
+        $inv = Database::one('SELECT enviado FROM inventarios WHERE id = ?', [$inventarioId]);
+        if (!$inv) {
+            return null;
+        }
+        return Database::one(
+            "SELECT i.id, i.fecha, i.turno, i.trabajador_id, " . self::AUTOR . " FROM inventario_lineas l
+             JOIN inventarios i ON i.id = l.inventario_id LEFT JOIN trabajadores t ON t.id = i.trabajador_id
+             WHERE l.item_id = ? AND l.cantidad IS NOT NULL AND i.estado = 'enviado' AND i.id <> ? AND i.enviado <= ?
+             ORDER BY i.enviado DESC, i.id DESC LIMIT 1",
+            [$itemId, $inventarioId, $inv['enviado']]
+        );
     }
 
     /**
@@ -467,19 +766,88 @@ final class InventarioService
             if (in_array($motivo, ['otro', 'otro_sobra'], true) && $obs === '') {
                 throw new InvalidArgumentException('Explica qué pasó con "' . $p['nombre'] . '".');
             }
-            $cambios[$p['linea']] = ['motivo_faltante' => $motivo] + ($obs !== '' ? ['observacion' => $obs] : []);
+            // "El turno anterior contó mal": queda el nombre de quien hizo el conteo anterior (no se cobra)
+            if ($motivo === 'mal_conteo') {
+                $previa = (string)Database::value('SELECT observacion FROM inventario_lineas WHERE id = ?', [$p['linea']]);
+                if ($obs === '' && !str_starts_with($previa, 'Contó mal')) {
+                    $obs = $previa;
+                }
+                $obs = 'Contó mal: ' . ($p['anterior'] ?? 'el conteo anterior') . ($obs !== '' && !str_starts_with($obs, 'Contó mal') ? ' · ' . $obs : '');
+            }
+            $c = ['motivo_faltante' => $motivo, 'responsable_id' => null, 'responsable_otro' => null] + ($obs !== '' ? ['observacion' => mb_substr($obs, 0, 255)] : []);
+            // Si se rompió: ¿quién lo partió?
+            if ($motivo === 'roto') {
+                $resp = (string)($r['responsable'] ?? '');
+                if ($resp === 'otro') {
+                    $quien = mb_substr(trim((string)($r['responsable_otro'] ?? '')), 0, 120);
+                    if (mb_strlen($quien) < 3) {
+                        throw new InvalidArgumentException('Escribe quién partió "' . $p['nombre'] . '" (por ejemplo: un cliente).');
+                    }
+                    $c['responsable_otro'] = $quien;
+                } elseif (ctype_digit($resp) && Database::value('SELECT 1 FROM trabajadores WHERE id = ? AND activo = 1', [(int)$resp])) {
+                    $c['responsable_id'] = (int)$resp;
+                } else {
+                    throw new InvalidArgumentException('Elige quién partió "' . $p['nombre'] . '".');
+                }
+                $c['_cantidad'] = -$p['dif'];
+            }
+            $cambios[$p['linea']] = $c;
         }
-        Database::transaction(function () use ($inventarioId, $cambios) {
+        Database::transaction(function () use ($inventarioId, $cambios, $inv) {
+            Database::run('DELETE FROM roturas WHERE inventario_id = ?', [$inventarioId]);
             foreach ($cambios as $lineaId => $c) {
+                $cant = $c['_cantidad'] ?? null;
+                unset($c['_cantidad']);
                 Database::update('inventario_lineas', $c, 'id = :id AND inventario_id = :inv', ['id' => $lineaId, 'inv' => $inventarioId]);
+                if ($cant) {
+                    $l = Database::one('SELECT * FROM inventario_lineas WHERE id = ?', [$lineaId]);
+                    $precio = $l['item_id'] ? (float)Database::value('SELECT COALESCE(precio, 0) FROM inventario_items WHERE id = ?', [$l['item_id']]) : 0;
+                    Database::insert('roturas', [
+                        'inventario_id' => $inventarioId, 'linea_id' => $lineaId, 'item_id' => $l['item_id'], 'item_nombre' => $l['item_nombre'],
+                        'trabajador_id' => $c['responsable_id'], 'responsable_otro' => $c['responsable_otro'], 'cantidad' => $cant,
+                        'fecha' => $inv['fecha'], 'observacion' => $l['observacion'], 'precio_unitario' => $precio,
+                        'creado' => now_utc(), 'actualizado' => now_utc(),
+                    ]);
+                }
             }
             Database::update('inventarios', ['motivos_pendientes' => 0, 'actualizado' => now_utc()], 'id = :id', ['id' => $inventarioId]);
         });
-        Audit::log('inventario_explicado', 'inventario', $inventarioId, null, null, array_map(fn($c) => self::MOTIVOS[$c['motivo_faltante']], $cambios));
+        Audit::log('inventario_explicado', 'inventario', $inventarioId, null, null, array_map(fn($c) => self::MOTIVOS[$c['motivo_faltante']]
+            . (!empty($c['responsable_id']) ? ' · ' . Database::value('SELECT nombre FROM trabajadores WHERE id = ?', [$c['responsable_id']]) : '')
+            . (!empty($c['responsable_otro']) ? ' · ' . $c['responsable_otro'] : ''), $cambios));
         self::generarPdf($inventarioId);
     }
 
     /* ---------------- Stock (cantidad que debe haber) ---------------- */
+
+    /**
+     * Lo que se contó queda como las unidades que hay en el local (falte o sobre):
+     * el siguiente turno se compara contra este conteo.
+     * @return bool si hubo algún primer conteo (stock inicial)
+     */
+    private static function aplicarConteo(array $lineas, int $inventarioId, string $actor): bool
+    {
+        $base = false;
+        foreach ($lineas as $l) {
+            if ($l['tipo'] !== 'cantidad' || $l['cantidad'] === null || !$l['item_id']) {
+                continue;
+            }
+            $it = Database::one('SELECT id, cantidad_esperada FROM inventario_items WHERE id = ? FOR UPDATE', [$l['item_id']]);
+            if (!$it) {
+                continue;
+            }
+            $antes = $it['cantidad_esperada'] !== null ? (int)$it['cantidad_esperada'] : null;
+            $ahora = (int)$l['cantidad'];
+            $base = $base || !empty($l['es_base']);
+            if ($antes === $ahora) {
+                continue;
+            }
+            Database::update('inventario_items', ['cantidad_esperada' => $ahora, 'actualizado' => now_utc()], 'id = :id', ['id' => $it['id']]);
+            self::movimiento((int)$it['id'], $antes === null ? 'base' : 'conteo', $ahora - (int)$antes, $antes, $ahora,
+                $antes === null ? 'Primer conteo: queda como stock' : 'Conteo del turno: quedan ' . $ahora, $inventarioId, $actor);
+        }
+        return $base;
+    }
 
     /**
      * Guarda como stock las cantidades de las líneas marcadas como base.
@@ -611,9 +979,8 @@ final class InventarioService
                 'envio_estado' => 'pendiente', 'ip' => client_ip(), 'creado' => $ahora, 'actualizado' => $ahora,
             ]);
             self::guardarLineas($id, $lineas);
-            if ($fijarStock) {
-                self::aplicarBase($lineas, $id, 'Administrador ' . $admin['nombre'], true);
-            }
+            // como cualquier conteo, lo contado queda como las unidades que hay
+            self::aplicarConteo($lineas, $id, 'Administrador ' . $admin['nombre']);
             return $id;
         });
         self::generarPdf($id);
@@ -628,12 +995,14 @@ final class InventarioService
         $out = [];
         foreach (self::items($areaId) as $it) {
             $ult = $it['tipo'] === 'cantidad' ? Database::one(
-                "SELECT l.cantidad, l.motivo_faltante, l.observacion, l.es_base, i.id AS inventario_id, i.fecha, i.turno, i.enviado, " . self::AUTOR . "
+                "SELECT l.cantidad, l.cantidad_esperada AS antes, l.motivo_faltante, l.observacion, l.es_base, l.responsable_id, l.responsable_otro,
+                        i.id AS inventario_id, i.fecha, i.turno, i.enviado, " . self::AUTOR . "
                  FROM inventario_lineas l JOIN inventarios i ON i.id = l.inventario_id LEFT JOIN trabajadores t ON t.id = i.trabajador_id
                  WHERE l.item_id = ? AND i.estado = 'enviado' AND l.cantidad IS NOT NULL ORDER BY i.enviado DESC, i.id DESC LIMIT 1",
                 [$it['id']]
             ) : null;
-            $dif = ($ult && $it['cantidad_esperada'] !== null) ? (int)$ult['cantidad'] - (int)$it['cantidad_esperada'] : null;
+            // diferencia del último conteo frente al anterior (después del conteo, el stock ya es lo contado)
+            $dif = ($ult && !$ult['es_base'] && $ult['antes'] !== null) ? (int)$ult['cantidad'] - (int)$ult['antes'] : null;
             $out[] = ['item' => $it, 'ultimo' => $ult, 'dif' => $dif];
         }
         return $out;
@@ -642,10 +1011,11 @@ final class InventarioService
     /** Reportes de faltantes y daños (no incluye conteos que fijaron stock) */
     public static function faltantes(string $desde, string $hasta, ?int $areaId = null): array
     {
-        $sql = "SELECT l.*, i.fecha, i.turno, i.enviado, i.area_id, a.nombre AS area, " . self::AUTOR . "
+        $sql = "SELECT l.*, i.fecha, i.turno, i.enviado, i.area_id, a.nombre AS area, " . self::AUTOR . ",
+                       COALESCE(rp.nombre, l.responsable_otro) AS responsable
                 FROM inventario_lineas l JOIN inventarios i ON i.id = l.inventario_id JOIN areas a ON a.id = i.area_id
-                LEFT JOIN trabajadores t ON t.id = i.trabajador_id
-                WHERE i.estado = 'enviado' AND l.es_base = 0 AND i.fecha BETWEEN ? AND ?
+                LEFT JOIN trabajadores t ON t.id = i.trabajador_id LEFT JOIN trabajadores rp ON rp.id = l.responsable_id
+                WHERE i.estado = 'enviado' AND l.es_base = 0 AND a.tipo = 'inventario' AND l.tipo = 'cantidad' AND i.fecha BETWEEN ? AND ?
                   AND ((l.cantidad_esperada IS NOT NULL AND l.cantidad IS NOT NULL AND l.cantidad <> l.cantidad_esperada) OR l.estado = 'danado')";
         $p = [$desde, $hasta];
         if ($areaId) {
@@ -665,10 +1035,10 @@ final class InventarioService
     }
 
     /** Elementos cuyo último conteo quedó por debajo del stock (para el resumen del día) */
-    public static function alertasStock(): array
+    public static function alertasStock(?int $localId = null): array
     {
         $out = [];
-        foreach (self::areas(true) as $a) {
+        foreach (self::areasInventario($localId) as $a) {
             foreach (self::controlStock((int)$a['id']) as $c) {
                 if ($c['dif'] !== null && $c['dif'] !== 0) {
                     $out[] = $c + ['area' => $a['nombre'], 'area_id' => (int)$a['id']];
@@ -683,7 +1053,7 @@ final class InventarioService
     public static function buscar(int $id): ?array
     {
         return Database::one(
-            'SELECT i.*, a.nombre AS area, ' . self::AUTOR . ' FROM inventarios i
+            'SELECT i.*, a.nombre AS area, a.tipo AS area_tipo, a.local_id, ' . self::AUTOR . ' FROM inventarios i
              JOIN areas a ON a.id = i.area_id LEFT JOIN trabajadores t ON t.id = i.trabajador_id WHERE i.id = ?',
             [$id]
         );
@@ -691,11 +1061,12 @@ final class InventarioService
 
     public static function historial(array $f): array
     {
-        $sql = "SELECT i.*, a.nombre AS area, " . self::AUTOR . " FROM inventarios i
+        $sql = "SELECT i.*, a.nombre AS area, a.tipo AS area_tipo, a.local_id, " . self::AUTOR . ",
+                       (SELECT COUNT(*) FROM inventario_lineas x WHERE x.inventario_id = i.id AND x.pedir > 0) AS por_pedir FROM inventarios i
                 JOIN areas a ON a.id = i.area_id LEFT JOIN trabajadores t ON t.id = i.trabajador_id
                 WHERE i.estado = 'enviado' AND i.fecha BETWEEN ? AND ?";
         $p = [$f['desde'], $f['hasta']];
-        foreach (['area_id' => 'i.area_id', 'trabajador_id' => 'i.trabajador_id', 'turno' => 'i.turno'] as $k => $col) {
+        foreach (['area_id' => 'i.area_id', 'trabajador_id' => 'i.trabajador_id', 'turno' => 'i.turno', 'local_id' => 'a.local_id', 'tipo' => 'a.tipo'] as $k => $col) {
             if (!empty($f[$k])) {
                 $sql .= " AND $col = ?";
                 $p[] = $f[$k];
@@ -746,6 +1117,22 @@ final class InventarioService
                 'observaciones' => mb_substr(trim($obs), 0, 1000) ?: null,
                 'diferencias' => self::contarDiferencias($nuevas), 'corregido' => 1, 'actualizado' => now_utc(),
             ], 'id = :id', ['id' => $id]);
+            // si es el último conteo del elemento, la corrección también corrige las unidades que hay
+            foreach ($nuevas as $l) {
+                if ($l['tipo'] !== 'cantidad' || $l['cantidad'] === null || !$l['item_id'] || ($l['hay'] ?? null) !== null) {
+                    continue;
+                }
+                $ultimo = (int)Database::value(
+                    "SELECT i.id FROM inventario_lineas x JOIN inventarios i ON i.id = x.inventario_id
+                     WHERE x.item_id = ? AND x.cantidad IS NOT NULL AND i.estado = 'enviado' ORDER BY i.enviado DESC, i.id DESC LIMIT 1",
+                    [$l['item_id']]
+                );
+                $it = self::item((int)$l['item_id']);
+                if ($ultimo === $id && $it && (int)$it['cantidad_esperada'] !== (int)$l['cantidad']) {
+                    Database::update('inventario_items', ['cantidad_esperada' => (int)$l['cantidad'], 'actualizado' => now_utc()], 'id = :id', ['id' => $it['id']]);
+                    self::movimiento((int)$it['id'], 'ajuste', (int)$l['cantidad'] - (int)$it['cantidad_esperada'], (int)$it['cantidad_esperada'], (int)$l['cantidad'], 'Corrección del inventario N.º ' . $id, $id);
+                }
+            }
         });
         $resumen = fn($ls) => array_combine(
             array_map(fn($l) => $l['item_nombre'], $ls),
@@ -756,10 +1143,10 @@ final class InventarioService
     }
 
     /** Estado de los inventarios de un día: [area_id][turno] => inventario enviado o null */
-    public static function tablero(string $fecha): array
+    public static function tablero(string $fecha, ?int $localId = null): array
     {
         $out = [];
-        foreach (self::areas(true) as $a) {
+        foreach (self::areasInventario($localId) as $a) {
             foreach (array_keys(self::TURNOS) as $t) {
                 $out[$a['id']]['area'] = $a['nombre'];
                 $out[$a['id']][$t] = self::enviadoDe((int)$a['id'], $fecha, $t);
@@ -791,7 +1178,7 @@ final class InventarioService
     public static function nombreArchivo(array $inv): string
     {
         $limpio = fn($s) => trim(preg_replace('/[^A-Za-z0-9]+/', '_', iconv('UTF-8', 'ASCII//TRANSLIT', $s) ?: $s), '_');
-        return 'Inventario_' . $limpio($inv['area']) . '_' . $inv['fecha'] . '_' . $inv['turno'] . '.pdf';
+        return $limpio(LocalService::nombre((int)($inv['local_id'] ?? 1))) . '_' . (($inv['area_tipo'] ?? '') === 'pedido' ? '' : 'Inventario_') . $limpio($inv['area']) . '_' . $inv['fecha'] . '_' . $inv['turno'] . '.pdf';
     }
 
     private static function logoJpg(): ?string
@@ -828,18 +1215,25 @@ final class InventarioService
             }
         }
 
-        $pdf = new PdfSimple('Inventario ' . $inv['area'] . ' ' . $inv['fecha']);
+        $esPedido = ($inv['area_tipo'] ?? '') === 'pedido';
+        $unidades = [];
+        foreach ($lineas as $l) {
+            $unidades[$l['id']] = $l['item_id'] ? (string)Database::value('SELECT unidad FROM inventario_items WHERE id = ?', [$l['item_id']]) : '';
+        }
+        $pdf = new PdfSimple(self::titulo($inv) . ' ' . $inv['fecha']);
         $x0 = 15.0;
         $ancho = 180.0;
-        $cols = [['Foto', 18], ['Elemento', 52], ['Esperado', 20], ['Reportado', 22], ['Diferencia', 22], ['Estado', 22], ['Observación', 24]];
-        $encabezado = function () use ($pdf, $inv, $x0, $ancho, $cols): float {
+        $cols = $esPedido
+            ? [['Foto', 18], ['Producto', 52], ['Mín. / Ópt.', 22], ['Hay', 18], ['Pedir', 20], ['Unidad', 24], ['Observación', 26]]
+            : [['Foto', 18], ['Elemento', 52], ['Esperado', 20], ['Reportado', 22], ['Diferencia', 22], ['Estado', 22], ['Observación', 24]];
+        $encabezado = function () use ($pdf, $inv, $x0, $ancho, $cols, $esPedido): float {
             $pdf->agregarPagina();
             $y = 12.0;
             if ($logo = self::logoJpg()) {
                 $pdf->imagen($logo, $x0, $y, 34, 20);
             }
-            $pdf->texto($x0 + 40, $y + 8, Settings::get('nombre_establecimiento'), 11, false, 'L', 0, 0.35);
-            $pdf->texto($x0 + 40, $y + 17, 'Inventario · ' . $inv['area'], 18, true);
+            $pdf->texto($x0 + 40, $y + 8, LocalService::nombre((int)$inv['local_id']), 11, false, 'L', 0, 0.35);
+            $pdf->texto($x0 + 40, $y + 17, $pdf->recortar(self::titulo($inv), $ancho - 70, 18, true), 18, true);
             $pdf->texto($x0, $y + 8, 'N.º ' . $inv['id'], 10, false, 'R', $ancho);
             $y += 27;
             $pdf->rect($x0, $y, $ancho, 16, 0.95, false);
@@ -859,7 +1253,7 @@ final class InventarioService
             $cx = $x0;
             $pdf->rect($x0, $y, $ancho, 8, [0.07, 0.23, 0.21], false);
             foreach ($cols as [$t, $w]) {
-                $pdf->texto($cx + 1.5, $y + 5.5, $t, 8.5, true, in_array($t, ['Esperado', 'Reportado', 'Diferencia'], true) ? 'R' : 'L', $w - 3, 1);
+                $pdf->texto($cx + 1.5, $y + 5.5, $t, 8.5, true, in_array($t, ['Esperado', 'Reportado', 'Diferencia', 'Mín. / Ópt.', 'Hay', 'Pedir'], true) ? 'R' : 'L', $w - 3, 1);
                 $cx += $w;
             }
             return $y + 8;
@@ -871,9 +1265,10 @@ final class InventarioService
             if ($y + $fila > 270) {
                 $y = $encabezado();
             }
-            $dif = ($l['tipo'] === 'cantidad' && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null)
+            $dif = (!$esPedido && $l['tipo'] === 'cantidad' && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null)
                 ? (int)$l['cantidad'] - (int)$l['cantidad_esperada'] : null;
-            $alerta = ($dif !== null && $dif !== 0) || in_array($l['estado'], ['novedad', 'danado'], true);
+            $alerta = ($dif !== null && $dif !== 0) || in_array($l['estado'], ['novedad', 'danado'], true)
+                || ($esPedido && (float)$l['pedir'] > 0) || ($l['tipo'] === 'pregunta' && $l['respuesta'] === 'no');
             if ($alerta) {
                 $pdf->rect($x0, $y, $ancho, $fila, [1, 0.93, 0.91], false);
             } elseif ($i % 2) {
@@ -887,17 +1282,34 @@ final class InventarioService
             $base = $y + $fila / 2 + 1.5;
             $pdf->texto($cx + 1.5, $base, $pdf->recortar($l['item_nombre'], $cols[1][1] - 3, 10.5, true), 10.5, true);
             $cx += $cols[1][1];
-            $pdf->texto($cx, $base, $l['cantidad_esperada'] !== null ? (string)$l['cantidad_esperada'] : '—', 10.5, false, 'R', $cols[2][1] - 1.5);
+            $pdf->texto($cx, $base, $esPedido
+                ? self::numero($l['minimo']) . ' / ' . self::numero($l['optimo'])
+                : ($l['cantidad_esperada'] !== null ? (string)$l['cantidad_esperada'] : '—'), 10.5, false, 'R', $cols[2][1] - 1.5);
             $cx += $cols[2][1];
-            $pdf->texto($cx, $base, $l['tipo'] === 'cantidad' ? (string)($l['cantidad'] ?? '—') : 'n/a', 12, true, 'R', $cols[3][1] - 1.5);
+            $reportado = $esPedido ? self::numero($l['hay']) : match ($l['tipo']) {
+                'cantidad' => (string)($l['cantidad'] ?? '—'),
+                'pregunta' => self::RESPUESTAS[$l['respuesta'] ?? ''] ?? '—',
+                'texto'    => 'ver nota',
+                default    => '—',
+            };
+            $pdf->texto($cx, $base, $reportado, $l['tipo'] === 'texto' ? 8.5 : 12, $l['tipo'] !== 'texto', 'R', $cols[3][1] - 1.5);
             $cx += $cols[3][1];
-            $pdf->texto($cx, $base, $dif === null ? '—' : ($dif > 0 ? '+' . $dif : (string)$dif), 11, $dif !== null && $dif !== 0, 'R', $cols[4][1] - 1.5, $dif !== null && $dif < 0 ? 0 : 0);
-            $cx += $cols[4][1];
-            $pdf->texto($cx + 1.5, $base, self::ESTADOS[$l['estado']] ?? '—', 9.5, $l['estado'] !== 'bien');
+            if ($esPedido) {
+                $pdf->texto($cx, $base, $l['pedir'] === null ? '—' : self::numero($l['pedir']), 12, (float)$l['pedir'] > 0, 'R', $cols[4][1] - 1.5);
+                $cx += $cols[4][1];
+                $pdf->texto($cx + 1.5, $base, $pdf->recortar($unidades[$l['id']] ?? '', $cols[5][1] - 3, 9), 9);
+            } else {
+                $pdf->texto($cx, $base, $dif === null ? '—' : ($dif > 0 ? '+' . $dif : (string)$dif), 11, $dif !== null && $dif !== 0, 'R', $cols[4][1] - 1.5);
+                $cx += $cols[4][1];
+                $pdf->texto($cx + 1.5, $base, in_array($l['tipo'], ['cantidad', 'estado'], true) ? (self::ESTADOS[$l['estado']] ?? '—') : '—', 9.5, $l['estado'] !== 'bien');
+            }
             $cx += $cols[5][1];
+            $quien = $l['responsable_id'] ? (string)Database::value('SELECT nombre FROM trabajadores WHERE id = ?', [$l['responsable_id']]) : ($l['responsable_otro'] ?? '');
             $obs = trim(implode(' · ', array_filter([
+                $l['tipo'] === 'texto' ? (string)$l['respuesta'] : '',
                 !empty($l['es_base']) ? 'Stock inicial' : '',
-                self::MOTIVOS[$l['motivo_faltante'] ?? ''] ?? ((!$l['es_base'] && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null && (int)$l['cantidad'] !== (int)$l['cantidad_esperada']) ? 'Sin explicar' : ''),
+                ($l['motivo_faltante'] ?? '') === 'mal_conteo' ? '' : (self::MOTIVOS[$l['motivo_faltante'] ?? ''] ?? ((!$l['es_base'] && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null && (int)$l['cantidad'] !== (int)$l['cantidad_esperada']) ? 'Sin explicar' : '')),
+                $quien !== '' ? 'Lo partió: ' . $quien : '',
                 (string)($l['observacion'] ?? ''),
             ])));
             if ($obs !== '') {
@@ -921,11 +1333,14 @@ final class InventarioService
             $y = $encabezado();
         }
         $dif = (int)$inv['diferencias'];
-        $pdf->texto($x0, $y + 4, $dif ? "Diferencias o novedades: $dif elemento(s)" : 'Sin diferencias ni novedades', 11, true);
+        $porPedir = count(array_filter($lineas, fn($l) => (float)$l['pedir'] > 0));
+        $pdf->texto($x0, $y + 4, $esPedido
+            ? ($porPedir ? "Productos por pedir: $porPedir" : 'No hay que pedir nada')
+            : ($dif ? "Diferencias o novedades: $dif elemento(s)" : 'Sin diferencias ni novedades'), 11, true);
         $y += 10;
         if (!empty($inv['es_base'])) {
             $pdf->texto($x0, $y, $inv['origen'] === 'admin'
-                ? 'Conteo del administrador: estas cantidades quedaron como el stock del área.'
+                ? 'Conteo del administrador: estas cantidades quedaron como las unidades que hay.'
                 : 'Primer conteo: las cantidades marcadas como "Stock inicial" quedaron como el stock.', 9.5, false, 'L', 0, 0.25);
             $y += 7;
         }
@@ -971,6 +1386,69 @@ final class InventarioService
             $out[] = $linea;
         }
         return array_slice($out, 0, 12);
+    }
+
+    /* ---------------- WhatsApp ---------------- */
+
+    /** Texto del reporte (inventario) o del pedido (lista) para enviar por WhatsApp */
+    public static function mensajeWhatsapp(int $id): string
+    {
+        $inv = self::buscar($id);
+        if (!$inv) {
+            return '';
+        }
+        $lineas = self::lineas($id);
+        $hora = utc_to_local($inv['enviado'])?->format('H:i') ?? '';
+        $esPedido = $inv['area_tipo'] === 'pedido';
+        $local = LocalService::nombre((int)$inv['local_id']);
+        $t = '*' . self::titulo($inv) . '*' . ($esPedido ? '' : ' (' . self::TURNOS[$inv['turno']] . ')')
+            . "\n" . $local . ' · ' . fmt_fecha($inv['fecha']) . ", $hora · " . $inv['trabajador'] . "\n";
+        if ($esPedido) {
+            $lista = [];
+            foreach ($lineas as $l) {
+                if ((float)$l['pedir'] > 0) {
+                    $u = $l['item_id'] ? (string)Database::value('SELECT unidad FROM inventario_items WHERE id = ?', [$l['item_id']]) : '';
+                    $lista[] = '• ' . $l['item_nombre'] . ': pedir *' . self::numero($l['pedir']) . '*' . ($u ? " $u" : '') . ' (hay ' . self::numero($l['hay']) . ')';
+                }
+            }
+            $t .= $lista ? "\n" . implode("\n", $lista) : "\nNo hay que pedir nada.";
+        } else {
+            $dif = [];
+            foreach ($lineas as $l) {
+                if ($l['tipo'] === 'pregunta' || $l['tipo'] === 'texto') {
+                    $dif[] = '• ' . $l['item_nombre'] . ' ' . ($l['tipo'] === 'pregunta' ? (self::RESPUESTAS[$l['respuesta'] ?? ''] ?? '—') : (string)$l['respuesta']);
+                    continue;
+                }
+                if ($l['es_base'] || $l['cantidad_esperada'] === null || $l['cantidad'] === null) {
+                    continue;
+                }
+                $d = (int)$l['cantidad'] - (int)$l['cantidad_esperada'];
+                if ($d === 0 && $l['estado'] === 'bien') {
+                    continue;
+                }
+                $quien = $l['responsable_id'] ? (string)Database::value('SELECT nombre FROM trabajadores WHERE id = ?', [$l['responsable_id']]) : ($l['responsable_otro'] ?? '');
+                $dif[] = '• ' . $l['item_nombre'] . ': ' . ($d < 0 ? 'faltan ' . (-$d) : ($d > 0 ? 'sobran ' . $d : self::ESTADOS[$l['estado']]))
+                    . ($d !== 0 ? ' (hay ' . (int)$l['cantidad'] . ', antes ' . (int)$l['cantidad_esperada'] . ')' : '')
+                    . ($l['motivo_faltante'] && $l['motivo_faltante'] !== 'mal_conteo' ? ' · ' . (self::MOTIVOS[$l['motivo_faltante']] ?? '') : (!$l['motivo_faltante'] && $d !== 0 ? ' · sin explicar' : ''))
+                    . ($quien !== '' ? ' · lo partió ' . $quien : '')
+                    . ($l['observacion'] ? ' · ' . $l['observacion'] : '');
+            }
+            $t .= $dif ? "\n" . implode("\n", $dif) : "\nTodo completo.";
+            if ($inv['es_base']) {
+                $t .= "\n(Primer conteo: quedó como stock)";
+            }
+        }
+        if ($inv['observaciones']) {
+            $t .= "\n\nNovedades: " . $inv['observaciones'];
+        }
+        return $t;
+    }
+
+    /** Enlace de WhatsApp al número del administrador (configuración) con el mensaje listo */
+    public static function urlWhatsapp(string $texto): string
+    {
+        $num = preg_replace('/\D/', '', Settings::get('whatsapp_admin'));
+        return 'https://wa.me/' . $num . '?text=' . rawurlencode($texto);
     }
 
     public static function registrarEnvio(int $id, string $estado, string $detalle): void

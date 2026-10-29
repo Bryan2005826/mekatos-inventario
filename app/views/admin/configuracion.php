@@ -42,6 +42,9 @@ $umbralHoras = rtrim(rtrim(number_format(((int)$s['descanso_umbral_minutos']) / 
         <label class="campo<?= $err('pin_bloqueo_minutos') ?>"><span>Minutos de bloqueo</span><input type="number" name="pin_bloqueo_minutos" min="1" max="120" value="<?= e($s['pin_bloqueo_minutos']) ?>"></label>
       </div>
 
+      <h2>WhatsApp del administrador</h2>
+      <label class="campo<?= $err('whatsapp_admin') ?>"><span>Número que recibe los reportes y pedidos</span><input name="whatsapp_admin" inputmode="tel" maxlength="20" value="<?= e($s['whatsapp_admin']) ?>" placeholder="3101234567"><small>Al terminar un inventario o una lista de pedido, el trabajador toca "Enviar por WhatsApp" y se abre el chat con este número y el mensaje listo.</small></label>
+
       <h2>Planillas</h2>
       <label class="campo<?= $err('valor_hora_defecto') ?>"><span>Valor de la hora para trabajadores nuevos</span><input type="number" name="valor_hora_defecto" min="0" step="50" value="<?= e($s['valor_hora_defecto']) ?>"><small>Cada trabajador conserva el último valor que le pongas en su planilla.</small></label>
       <label class="campo"><span>Mensaje al pie de la planilla</span><input name="mensaje_planilla" maxlength="160" value="<?= e($s['mensaje_planilla']) ?>"></label>
@@ -58,7 +61,7 @@ $umbralHoras = rtrim(rtrim(number_format(((int)$s['descanso_umbral_minutos']) / 
 
 <div class="columnas">
   <section class="bloque">
-    <h2>Internet del local</h2>
+    <h2>Internet de <?= e($local['nombre']) ?></h2>
     <p>Tu IP pública en este momento es <strong class="num"><?= e($ipActual) ?></strong>. Si estás conectado al Wi-Fi del local, agrégala. Si el proveedor de internet la cambia, actualízala aquí.</p>
     <form method="post" action="<?= e(url('admin/redes/agregar')) ?>" class="form form-linea">
       <?= Csrf::field() ?>

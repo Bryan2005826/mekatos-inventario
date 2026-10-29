@@ -1,6 +1,6 @@
 <div class="encabezado">
-  <h1>Kiosco del local</h1>
-  <p class="sub">Solo los dispositivos autorizados pueden registrar entradas y salidas. Usa una tablet, un celular o el computador que permanece en el local.</p>
+  <h1>Kiosco · <?= e($local['nombre']) ?></h1>
+  <p class="sub">Solo el celular autorizado de <?= e($local['nombre']) ?> registra entradas y salidas, y solo muestra al personal de este local. Para el otro local, cámbialo arriba y autoriza su celular allá.</p>
 </div>
 
 <?php if ($codigo): ?>
@@ -12,14 +12,14 @@
 <?php endif; ?>
 
 <?php if ($actual): ?>
-  <div class="aviso aviso-ok">El navegador que estás usando ahora está autorizado como <strong><?= e($actual['nombre']) ?></strong>.</div>
+  <div class="aviso aviso-ok">El navegador que estás usando ahora está autorizado como <strong><?= e($actual['nombre']) ?></strong> (<?= e(LocalService::nombre((int)$actual['local_id'])) ?>).</div>
 <?php endif; ?>
 
 <section class="bloque bloque-estrecho">
-  <h2>Autorizar un dispositivo nuevo</h2>
+  <h2>Autorizar el celular de <?= e($local['nombre']) ?></h2>
   <form method="post" action="<?= e(url('admin/dispositivos/codigo')) ?>" class="form form-linea">
     <?= Csrf::field() ?>
-    <label class="campo"><span>Nombre</span><input name="nombre" required maxlength="60" placeholder="Tablet de la entrada"></label>
+    <label class="campo"><span>Nombre</span><input name="nombre" required maxlength="60" placeholder="Celular de <?= e($local['nombre']) ?>"></label>
     <button class="btn btn-primario" type="submit">Generar código</button>
   </form>
   <ol class="pasos">

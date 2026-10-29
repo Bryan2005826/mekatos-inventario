@@ -5,18 +5,21 @@ final class TrabajadorService
 {
     public const COLORES = ['#1F6F5C', '#2F5BD3', '#B4531F', '#7A3E9D', '#A8326E', '#3E7A1F', '#8A6D0B', '#1F5F7A'];
 
-    public static function activos(): array
+    /** Trabajadores activos; con $localId, solo los de ese local */
+    public static function activos(?int $localId = null): array
     {
-        return Database::all('SELECT id, nombre, color FROM trabajadores WHERE activo = 1 ORDER BY orden, nombre');
+        return $localId
+            ? Database::all('SELECT id, nombre, color, local_id FROM trabajadores WHERE activo = 1 AND local_id = ? ORDER BY orden, nombre', [$localId])
+            : Database::all('SELECT id, nombre, color, local_id FROM trabajadores WHERE activo = 1 ORDER BY orden, nombre');
     }
 
-    public static function todos(): array
+    public static function todos(?int $localId = null): array
     {
         return Database::all(
             "SELECT t.*,
                     (SELECT MAX(fecha_hora) FROM marcaciones m WHERE m.trabajador_id = t.id) AS ultima_marca,
                     (SELECT COUNT(*) FROM jornadas j WHERE j.trabajador_id = t.id AND j.estado = 'abierta') AS abiertas
-             FROM trabajadores t ORDER BY t.activo DESC, t.orden, t.nombre"
+             FROM trabajadores t" . ($localId ? ' WHERE t.local_id = ' . (int)$localId : '') . " ORDER BY t.activo DESC, t.orden, t.nombre"
         );
     }
 
@@ -63,13 +66,18 @@ final class TrabajadorService
     }
 
     /** @return array{id:int, pin:string} */
-    public static function crear(string $nombre, ?string $documento, ?string $color): array
+    public static function crear(string $nombre, ?string $documento, ?string $color, ?int $localId = null, ?string $pin = null): array
     {
         $nombre = self::validarNombre($nombre);
-        $pin = self::generarPin();
+        $localId ??= LocalService::actualId();
+        if (!LocalService::buscar($localId)) {
+            throw new InvalidArgumentException('Elige un local válido.');
+        }
+        $pin ??= self::generarPin();
         $orden = (int)Database::value('SELECT COALESCE(MAX(orden), 0) + 1 FROM trabajadores');
         $ahora = now_utc();
         $id = Database::insert('trabajadores', [
+            'local_id'     => $localId,
             'nombre'       => $nombre,
             'documento'    => $documento !== '' ? $documento : null,
             'pin_hash'     => password_hash($pin, PASSWORD_DEFAULT),
@@ -80,15 +88,17 @@ final class TrabajadorService
             'creado'       => $ahora,
             'actualizado'  => $ahora,
         ]);
-        Audit::log('trabajador_creado', 'trabajador', $id, null, null, ['nombre' => $nombre]);
+        Audit::log('trabajador_creado', 'trabajador', $id, null, null, ['nombre' => $nombre, 'local' => LocalService::nombre($localId)]);
         return ['id' => $id, 'pin' => $pin];
     }
 
-    public static function actualizar(int $id, string $nombre, ?string $documento, ?string $color, int $orden, string $motivo = ''): void
+    public static function actualizar(int $id, string $nombre, ?string $documento, ?string $color, int $orden, string $motivo = '', ?int $localId = null): void
     {
         $t = self::buscar($id) ?? throw new InvalidArgumentException('El trabajador no existe.');
         $nombre = self::validarNombre($nombre);
+        $localId = $localId && LocalService::buscar($localId) ? $localId : (int)$t['local_id'];
         $nuevo = [
+            'local_id'    => $localId,
             'nombre'      => $nombre,
             'documento'   => $documento !== '' ? $documento : null,
             'color'       => self::validarColor($color),
@@ -97,8 +107,8 @@ final class TrabajadorService
         ];
         Database::update('trabajadores', $nuevo, 'id = :id', ['id' => $id]);
         Audit::log('trabajador_editado', 'trabajador', $id, $motivo ?: null,
-            ['nombre' => $t['nombre'], 'documento' => $t['documento'], 'color' => $t['color'], 'orden' => (int)$t['orden']],
-            ['nombre' => $nombre, 'documento' => $nuevo['documento'], 'color' => $nuevo['color'], 'orden' => $orden]);
+            ['nombre' => $t['nombre'], 'documento' => $t['documento'], 'color' => $t['color'], 'orden' => (int)$t['orden'], 'local' => LocalService::nombre((int)$t['local_id'])],
+            ['nombre' => $nombre, 'documento' => $nuevo['documento'], 'color' => $nuevo['color'], 'orden' => $orden, 'local' => LocalService::nombre($localId)]);
     }
 
     public static function restablecerPin(int $id, string $motivo): string

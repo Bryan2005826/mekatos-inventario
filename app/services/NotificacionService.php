@@ -132,7 +132,7 @@ final class NotificacionService
         $lineas = InventarioService::lineas($inventarioId);
         $faltan = $sobran = 0;
         foreach ($lineas as $l) {
-            if (!$l['es_base'] && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null) {
+            if (!$l['es_base'] && $l['hay'] === null && $l['tipo'] === 'cantidad' && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null) {
                 $d = (int)$l['cantidad'] - (int)$l['cantidad_esperada'];
                 $faltan += max(0, -$d);
                 $sobran += max(0, $d);
@@ -144,24 +144,30 @@ final class NotificacionService
         }
         $turno = InventarioService::TURNOS[$inv['turno']];
         $hora = utc_to_local($inv['enviado'])->format('H:i');
-        $asunto = ($faltan ? "FALTAN $faltan · " : '') . ($sobran ? "SOBRAN $sobran · " : '') . "Inventario {$inv['area']} · $turno · " . fmt_fecha($inv['fecha'])
-            . ((int)$inv['diferencias'] && !$faltan ? " · {$inv['diferencias']} novedad(es)" : '') . ($inv['es_base'] ? ' · stock inicial' : '');
+        $porPedir = count(array_filter($lineas, fn($l) => (float)$l['pedir'] > 0));
+        $local = LocalService::nombre((int)$inv['local_id']);
+        $asunto = "$local · " . ($inv['area_tipo'] === 'pedido'
+            ? InventarioService::titulo($inv) . ' · ' . ($porPedir ? "$porPedir producto(s) por pedir" : 'no hay que pedir') . ' · ' . fmt_fecha($inv['fecha'])
+            : ($faltan ? "FALTAN $faltan · " : '') . ($sobran ? "SOBRAN $sobran · " : '') . "Inventario {$inv['area']} · $turno · " . fmt_fecha($inv['fecha'])
+            . ((int)$inv['diferencias'] && !$faltan ? " · {$inv['diferencias']} novedad(es)" : '') . ($inv['es_base'] ? ' · stock inicial' : ''));
         $filas = '';
         foreach ($lineas as $l) {
-            $dif = ($l['tipo'] === 'cantidad' && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null) ? (int)$l['cantidad'] - (int)$l['cantidad_esperada'] : null;
+            $dif = ($l['tipo'] === 'cantidad' && $l['hay'] === null && $l['cantidad_esperada'] !== null && $l['cantidad'] !== null) ? (int)$l['cantidad'] - (int)$l['cantidad_esperada'] : null;
             $alerta = ($dif !== null && $dif !== 0) || in_array($l['estado'], ['novedad', 'danado'], true);
             $filas .= '<tr style="' . ($alerta ? 'background:#FCECEA' : '') . '"><td style="padding:4px 6px">' . e($l['item_nombre']) . '</td><td style="padding:4px 6px;text-align:right">'
-                . e($l['cantidad'] ?? 'n/a') . ($l['cantidad_esperada'] !== null ? ' / ' . (int)$l['cantidad_esperada'] : '') . '</td><td style="padding:4px 6px">'
+                . e($l['hay'] !== null ? InventarioService::numero($l['hay']) . ' / ' . InventarioService::numero($l['optimo'])
+                    : ($l['cantidad'] ?? (InventarioService::RESPUESTAS[$l['respuesta'] ?? ''] ?? ($l['respuesta'] ?? 'n/a'))) . ($l['cantidad_esperada'] !== null ? ' / ' . (int)$l['cantidad_esperada'] : ''))
+                . ((float)$l['pedir'] > 0 ? ' · <strong>pedir ' . e(InventarioService::numero($l['pedir'])) . '</strong>' : '') . '</td><td style="padding:4px 6px">'
                 . e(InventarioService::ESTADOS[$l['estado']] ?? '')
                 . ($l['motivo_faltante'] ? ' · <strong>' . e(InventarioService::MOTIVOS[$l['motivo_faltante']] ?? '') . '</strong>' : '')
                 . ($l['es_base'] ? ' · stock inicial' : '')
                 . ($l['observacion'] ? ' · ' . e($l['observacion']) : '') . '</td></tr>';
         }
-        $html = self::plantilla("Inventario de {$inv['area']} ($turno)",
+        $html = self::plantilla(InventarioService::titulo($inv) . " ($turno) · $local",
             '<p style="margin:0 0 12px"><strong>' . e($inv['trabajador']) . '</strong> lo envió el ' . e(fmt_fecha($inv['fecha'])) . ' a las <strong>' . $hora . '</strong>.</p>'
-            . '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr style="color:#4A5F5B"><th style="text-align:left;padding:4px 6px">Elemento</th><th style="text-align:right;padding:4px 6px">Reportado / esperado</th><th style="text-align:left;padding:4px 6px">Estado</th></tr>' . $filas . '</table>'
+            . '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr style="color:#4A5F5B"><th style="text-align:left;padding:4px 6px">Elemento</th><th style="text-align:right;padding:4px 6px">' . ($inv['area_tipo'] === 'pedido' ? 'Hay / debe haber' : 'Contó / conteo anterior') . '</th><th style="text-align:left;padding:4px 6px">Estado</th></tr>' . $filas . '</table>'
             . ($inv['observaciones'] ? '<p><strong>Observaciones:</strong> ' . e($inv['observaciones']) . '</p>' : '')
-            . (($faltan || $sobran) ? '<p style="color:#C23B2E;margin:12px 0 0"><strong>' . trim(($faltan ? "Faltan $faltan pieza(s). " : '') . ($sobran ? "Sobran $sobran pieza(s)." : '')) . '</strong> Revisa los motivos y ajusta el stock en <a href="' . e(url('admin/stock', ['area' => $inv['area_id']])) . '">Control de loza</a> (dar de baja lo roto o perdido, sumar lo nuevo).</p>' : '')
+            . (($faltan || $sobran) ? '<p style="color:#C23B2E;margin:12px 0 0"><strong>' . trim(($faltan ? "Faltan $faltan pieza(s). " : '') . ($sobran ? "Sobran $sobran pieza(s)." : '')) . '</strong> Mira los motivos en <a href="' . e(url('admin/stock', ['area' => $inv['area_id']])) . '">Control de loza</a>. Lo contado ya quedó como las unidades que hay.</p>' : '')
             . '<p style="margin:12px 0 0">El PDF va adjunto y también queda en el panel, en Historial de inventarios.</p>');
         $texto = "Inventario {$inv['area']} ($turno) enviado por {$inv['trabajador']} el {$inv['fecha']} a las $hora. Novedades: {$inv['diferencias']}. El PDF va adjunto.";
         $id = self::encolar('inventario', $inventarioId, $asunto, $html, $texto, 'inventarios/' . $inv['pdf'], InventarioService::nombreArchivo($inv));
@@ -183,6 +189,7 @@ final class NotificacionService
         $pend = 0;
         foreach (PlanillaService::delPeriodo($inicio) as $p) {
             $c = PlanillaService::calcular($p);
+            $p['nombre'] .= ' (' . LocalService::nombre((int)Database::value('SELECT local_id FROM trabajadores WHERE id = ?', [$p['trabajador_id']])) . ')';
             $pend += $c['pendientes'];
             $filas .= '<tr><td style="padding:4px 6px">' . e($p['nombre']) . '</td><td style="padding:4px 6px;text-align:right">' . e($c['horas_dec']) . ' h</td><td style="padding:4px 6px;text-align:right">'
                 . ($c['liquidable'] ? e(fmt_pesos($c['total_entregar'])) . ($c['pago_fijo'] ? ' (fijo)' : '') : 'sin valor de pago') . '</td></tr>';

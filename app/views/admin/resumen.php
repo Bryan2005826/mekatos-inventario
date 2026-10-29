@@ -1,5 +1,5 @@
 <div class="encabezado">
-  <h1>Resumen del día</h1>
+  <h1>Resumen del día · <?= e(LocalService::actual()['nombre']) ?></h1>
   <p class="sub"><?= e(fmt_fecha($hoy)) ?></p>
 </div>
 
@@ -87,12 +87,12 @@
 
 <?php if ($alertasStock): ?>
 <section class="bloque bloque-alerta">
-  <h2>No cuadra la loza</h2>
-  <p class="sub">Según el último inventario de cada área. Revisa el motivo y ajusta el stock en Control de loza.</p>
+  <h2>Cambios en la loza</h2>
+  <p class="sub">El último conteo de cada área no coincidió con el anterior. Mira el motivo en Control de loza.</p>
   <ul class="lista-personas">
     <?php foreach ($alertasStock as $a): ?>
       <li><a href="<?= e(url('admin/stock', ['area' => $a['area_id']])) ?>"><strong><?= e($a['item']['nombre']) ?></strong> · <?= e($a['area']) ?></a>
-        <span class="meta"><?= $a['dif'] < 0 ? 'faltan ' . -(int)$a['dif'] : 'sobran ' . (int)$a['dif'] ?> (debe haber <?= (int)$a['item']['cantidad_esperada'] ?>)<?= $a['ultimo']['motivo_faltante'] ? ' · ' . e(InventarioService::MOTIVOS[$a['ultimo']['motivo_faltante']] ?? '') : ' · <strong>sin explicar</strong>' ?> · reportó <?= e($a['ultimo']['trabajador']) ?></span></li>
+        <span class="meta"><?= $a['dif'] < 0 ? (-(int)$a['dif']) . ' menos' : (int)$a['dif'] . ' más' ?> (antes <?= (int)$a['ultimo']['antes'] ?>, ahora <?= (int)$a['ultimo']['cantidad'] ?>)<?= $a['ultimo']['motivo_faltante'] ? ' · ' . e(InventarioService::MOTIVOS[$a['ultimo']['motivo_faltante']] ?? '') : ' · <strong>sin explicar</strong>' ?> · reportó <?= e($a['ultimo']['trabajador']) ?></span></li>
     <?php endforeach; ?>
   </ul>
 </section>

@@ -43,7 +43,7 @@
   <p class="aviso aviso-info" id="lista-borrador" hidden></p>
   <p class="k-error" id="lista-error" role="alert" hidden></p>
   <ol class="inv-items" id="items" role="list"></ol>
-  <label class="campo inv-obs"><span>Observaciones generales (opcional)</span><textarea id="obs" rows="2" maxlength="1000" placeholder="Ej.: se rompieron dos platos en el almuerzo"></textarea></label>
+  <label class="campo inv-obs"><span id="obs-titulo">Observaciones generales (opcional)</span><textarea id="obs" rows="2" maxlength="1000" placeholder="Ej.: se rompieron dos platos en el almuerzo"></textarea></label>
   <div class="inv-barra">
     <span class="inv-guardado" id="guardado" aria-live="polite"></span>
     <button type="button" class="btn btn-quieto" id="btn-borrador">Guardar borrador</button>
@@ -73,7 +73,7 @@
 <!-- Paso 6: explicar diferencias (después de enviar) -->
 <section id="paso-porque" class="inv-hoja" hidden aria-labelledby="porque-titulo">
   <h2 id="porque-titulo">Tu conteo quedó guardado</h2>
-  <p class="sub">Algunas cantidades no cuadran con lo que debe haber. Cuéntanos por qué. Las cantidades ya no se pueden cambiar.</p>
+  <p class="sub">Algunas cantidades no coinciden con el conteo anterior. Cuéntanos por qué. Lo que contaste ya quedó guardado como lo que hay.</p>
   <ol class="inv-items" id="preguntas" role="list"></ol>
   <p class="k-error" id="porque-error" role="alert" hidden></p>
   <div class="inv-barra">
@@ -103,10 +103,11 @@
 <section class="k-capa" id="capa-listo" hidden aria-live="polite">
   <div class="k-panel k-resultado ok">
     <div class="k-resultado-icono" aria-hidden="true"></div>
-    <p class="k-resultado-titulo">Inventario enviado correctamente</p>
+    <p class="k-resultado-titulo" id="listo-titulo">Inventario enviado correctamente</p>
     <p class="k-resultado-hora" id="listo-hora"></p>
     <p class="k-resultado-extra" id="listo-extra"></p>
-    <button type="button" class="btn btn-primario btn-ancho" id="btn-compartir">Compartir PDF (WhatsApp)</button>
+    <a class="btn btn-primario btn-ancho btn-wa" id="btn-whatsapp" href="#" target="_blank" rel="noopener">Avisar por WhatsApp</a>
+    <button type="button" class="btn btn-quieto btn-ancho" id="btn-compartir">Compartir PDF</button>
     <a class="btn btn-quieto btn-ancho" id="btn-descargar" href="#">Descargar PDF</a>
     <button type="button" class="btn btn-quieto btn-ancho" data-salir>Terminar</button>
   </div>

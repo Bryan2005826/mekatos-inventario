@@ -9,18 +9,20 @@ final class RedService
         return Settings::bool('validar_red');
     }
 
-    public static function ipAutorizada(string $ip): bool
+    public static function ipAutorizada(string $ip, ?int $localId = null): bool
     {
-        return (bool)Database::value('SELECT 1 FROM redes_autorizadas WHERE ip = ? AND activo = 1', [$ip]);
+        return $localId
+            ? (bool)Database::value('SELECT 1 FROM redes_autorizadas WHERE ip = ? AND activo = 1 AND local_id = ?', [$ip, $localId])
+            : (bool)Database::value('SELECT 1 FROM redes_autorizadas WHERE ip = ? AND activo = 1', [$ip]);
     }
 
     /** @return array{ok:bool, codigo:string} */
-    public static function validar(): array
+    public static function validar(?int $localId = null): array
     {
         if (!self::activa()) {
             return ['ok' => true, 'codigo' => 'red_no_exigida'];
         }
-        return self::ipAutorizada(client_ip())
+        return self::ipAutorizada(client_ip(), $localId)
             ? ['ok' => true, 'codigo' => 'red_ok']
             : ['ok' => false, 'codigo' => 'red_no_autorizada'];
     }

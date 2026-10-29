@@ -41,6 +41,7 @@ final class Settings
         'correo_destinos'          => '',
         'notificar_inventario'     => '1',
         'notificar_faltantes'      => '1',
+        'whatsapp_admin'           => '',
         'notificar_cierre'         => '1',
     ];
 

@@ -25,8 +25,17 @@ CREATE TABLE IF NOT EXISTS administradores (
   creado         DATETIME     NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS locales (
+  id      INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  nombre  VARCHAR(60) NOT NULL,
+  orden   INT NOT NULL DEFAULT 0,
+  activo  TINYINT(1) NOT NULL DEFAULT 1,
+  creado  DATETIME NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS trabajadores (
   id                   INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  local_id             INT UNSIGNED NOT NULL DEFAULT 1,
   nombre               VARCHAR(80)  NOT NULL,
   documento            VARCHAR(30)  NULL,
   pin_hash             VARCHAR(255) NOT NULL,
@@ -40,12 +49,14 @@ CREATE TABLE IF NOT EXISTS trabajadores (
   consentimiento_datos DATETIME     NULL,           -- aceptación del tratamiento de datos (foto de evidencia)
   creado               DATETIME     NOT NULL,
   actualizado          DATETIME     NOT NULL,
-  KEY idx_activo_orden (activo, orden)
+  KEY idx_activo_orden (activo, orden),
+  KEY idx_local (local_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Dispositivos autorizados para registrar asistencia (kiosco del local)
 CREATE TABLE IF NOT EXISTS dispositivos (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  local_id      INT UNSIGNED NOT NULL DEFAULT 1,
   nombre        VARCHAR(80)  NOT NULL,
   token_hash    CHAR(64)     NULL UNIQUE,          -- sha256 del token guardado en la cookie del kiosco
   codigo_hash   CHAR(64)     NULL,                 -- sha256 del código de activación (temporal)
@@ -62,6 +73,7 @@ CREATE TABLE IF NOT EXISTS dispositivos (
 -- IP públicas de la conexión a internet del local (opcional)
 CREATE TABLE IF NOT EXISTS redes_autorizadas (
   id           INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  local_id      INT UNSIGNED NOT NULL DEFAULT 1,
   ip           VARCHAR(45)  NOT NULL UNIQUE,
   descripcion  VARCHAR(120) NULL,
   activo       TINYINT(1)   NOT NULL DEFAULT 1,
@@ -189,8 +201,11 @@ CREATE TABLE IF NOT EXISTS planillas (
 -- =============================================================
 CREATE TABLE IF NOT EXISTS areas (
   id        INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  local_id      INT UNSIGNED NOT NULL DEFAULT 1,
   nombre    VARCHAR(60)  NOT NULL,
   token     CHAR(24)     NOT NULL UNIQUE,      -- va en el QR; no es una contraseña
+  tipo      ENUM('inventario','pedido') NOT NULL DEFAULT 'inventario', -- pedido = lista para pedir mercancía
+  ayuda_obs VARCHAR(160) NULL,                 -- ejemplo que aparece en la casilla de novedades
   orden     INT          NOT NULL DEFAULT 0,
   activo    TINYINT(1)   NOT NULL DEFAULT 1,
   creado    DATETIME     NOT NULL
@@ -200,8 +215,12 @@ CREATE TABLE IF NOT EXISTS inventario_items (
   id                 INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   area_id            INT UNSIGNED NOT NULL,
   nombre             VARCHAR(80)  NOT NULL,
-  tipo               ENUM('cantidad','estado') NOT NULL DEFAULT 'cantidad',
-  cantidad_esperada  INT          NULL,
+  tipo               ENUM('cantidad','estado','pregunta','texto') NOT NULL DEFAULT 'cantidad',
+  cantidad_esperada  INT          NULL,             -- stock (inventario) o "debe haber" (pedido)
+  unidad             VARCHAR(20)  NULL,             -- pacas, unidades, cajas...
+  precio             DECIMAL(12,2) NULL,            -- valor de reposición (para cobrar lo partido)
+  minimo             DECIMAL(10,2) NULL,            -- pedido: si hay esto o menos, se pide
+  optimo             DECIMAL(10,2) NULL,            -- pedido: cantidad a la que se debe llegar
   foto               VARCHAR(120) NULL,
   orden              INT          NOT NULL DEFAULT 0,
   activo             TINYINT(1)   NOT NULL DEFAULT 1,
@@ -243,9 +262,16 @@ CREATE TABLE IF NOT EXISTS inventario_lineas (
   inventario_id      INT UNSIGNED NOT NULL,
   item_id            INT UNSIGNED NULL,
   item_nombre        VARCHAR(80)  NOT NULL,         -- copia: el catálogo puede cambiar después
-  tipo               ENUM('cantidad','estado') NOT NULL DEFAULT 'cantidad',
+  tipo               ENUM('cantidad','estado','pregunta','texto') NOT NULL DEFAULT 'cantidad',
   cantidad_esperada  INT          NULL,
   cantidad           INT          NULL,
+  respuesta          VARCHAR(255) NULL,            -- preguntas (si/poco/no) y respuestas escritas
+  hay                DECIMAL(10,2) NULL,           -- listas de pedido: lo que hay (admite 0.5)
+  minimo             DECIMAL(10,2) NULL,
+  optimo             DECIMAL(10,2) NULL,
+  pedir              DECIMAL(10,2) NULL,           -- listas de pedido: cuánto hay que pedir
+  responsable_id     INT UNSIGNED NULL,            -- quién lo partió
+  responsable_otro   VARCHAR(120) NULL,            -- "lo partió un cliente"...
   estado             ENUM('bien','novedad','danado') NULL,
   observacion        VARCHAR(255) NULL,
   motivo_faltante    VARCHAR(20)  NULL,            -- roto, perdido, otra_area, en_uso, otro
@@ -294,4 +320,23 @@ CREATE TABLE IF NOT EXISTS stock_movimientos (
   creado         DATETIME     NOT NULL,
   KEY idx_item (item_id, creado),
   CONSTRAINT fk_mov_item FOREIGN KEY (item_id) REFERENCES inventario_items(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Loza partida con responsable (se descuenta en la planilla si el administrador le pone precio)
+CREATE TABLE IF NOT EXISTS roturas (
+  id               INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  inventario_id    INT UNSIGNED NOT NULL,
+  linea_id         INT UNSIGNED NULL,
+  item_id          INT UNSIGNED NULL,
+  item_nombre      VARCHAR(80)  NOT NULL,
+  trabajador_id    INT UNSIGNED NULL,               -- NULL cuando fue un cliente u otra persona
+  responsable_otro VARCHAR(120) NULL,
+  cantidad         INT          NOT NULL,
+  fecha            DATE         NOT NULL,
+  observacion      VARCHAR(255) NULL,
+  precio_unitario  DECIMAL(12,2) NOT NULL DEFAULT 0,
+  creado           DATETIME     NOT NULL,
+  actualizado      DATETIME     NOT NULL,
+  KEY idx_trab_fecha (trabajador_id, fecha),
+  KEY idx_inv (inventario_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

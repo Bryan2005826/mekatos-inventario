@@ -40,6 +40,10 @@ $routes = require APP_PATH . '/routes.php';
 if ($route !== 'instalar' && !str_starts_with($route, 'assets') && Settings::get('instalado') !== '1') {
     redirect('instalar');
 }
+if (Settings::get('instalado') === '1') {
+    LocalService::asegurar();   // actualización: locales (Mekatos 1 y Mekatos 2)
+    PersonalMekatos::asegurar(); // personal inicial de ambos locales (una sola vez)
+}
 
 $handler = $routes[$method . ' ' . $route] ?? null;
 if (!$handler) {

@@ -9,7 +9,8 @@ final class TrabajadoresController
         $pin = $_SESSION['_pin'] ?? null;   // PIN recién generado: se muestra una sola vez
         unset($_SESSION['_pin']);
         view('admin/trabajadores', [
-            'trabajadores' => TrabajadorService::todos(),
+            'trabajadores' => TrabajadorService::todos(LocalService::actualId()),
+            'local'        => LocalService::actual(),
             'colores'      => TrabajadorService::COLORES,
             'pin'          => $pin,
             'seccion'      => 'trabajadores',
@@ -41,7 +42,7 @@ final class TrabajadoresController
         Auth::requireAdmin();
         $id = (int)input('id');
         try {
-            TrabajadorService::actualizar($id, (string)input('nombre', ''), (string)input('documento', ''), (string)input('color', ''), (int)input('orden', 0), (string)input('motivo', ''));
+            TrabajadorService::actualizar($id, (string)input('nombre', ''), (string)input('documento', ''), (string)input('color', ''), (int)input('orden', 0), (string)input('motivo', ''), (int)input('local_id', 0) ?: null);
             flash('ok', 'Cambios guardados.');
             redirect('admin/trabajadores');
         } catch (InvalidArgumentException $e) {

@@ -95,12 +95,58 @@
       fila.className = 'inv-contador';
       const menos = document.createElement('button'); menos.type = 'button'; menos.textContent = '−'; menos.setAttribute('aria-label', 'Restar uno'); menos.dataset.paso = '-1';
       const input = document.createElement('input');
-      input.type = 'number'; input.inputMode = 'numeric'; input.min = '0'; input.max = '100000'; input.step = '1';
+      input.type = 'number'; input.min = '0'; input.max = '100000';
+      // en las listas de pedido se puede contar medio (0.5): media canasta, media bandeja...
+      input.inputMode = datos.pedido ? 'decimal' : 'numeric'; input.step = datos.pedido ? '0.5' : '1';
       input.placeholder = '0'; input.setAttribute('aria-label', 'Cantidad de ' + it.nombre); input.className = 'inv-cantidad';
       if (v && v.cantidad !== null && v.cantidad !== undefined) input.value = v.cantidad;
       const mas = document.createElement('button'); mas.type = 'button'; mas.textContent = '+'; mas.setAttribute('aria-label', 'Sumar uno'); mas.dataset.paso = '1';
       fila.append(menos, input, mas);
       cuerpo.appendChild(fila);
+      if (it.unidad) {
+        const u = document.createElement('p'); u.className = 'inv-esperada'; u.textContent = 'Cuenta en ' + it.unidad + (datos.pedido ? ' (medio = 0.5)' : ''); cuerpo.appendChild(u);
+      }
+    }
+    if (datos.pedido && it.tipo === 'cantidad') {
+      const e = document.createElement('p'); e.className = 'inv-esperada inv-meta';
+      const u = it.unidad ? ' ' + it.unidad : '';
+      const partes = [];
+      if (it.minimo !== null) partes.push('Mínimo ' + it.minimo + u);
+      if (it.optimo !== null) partes.push('Debe haber ' + it.optimo + u);
+      e.textContent = partes.length ? partes.join(' · ') : 'Sin cantidades definidas';
+      h.after(e);
+    }
+    if (it.tipo === 'pregunta') {
+      const g = document.createElement('div');
+      g.className = 'inv-estados inv-respuestas'; g.setAttribute('role', 'radiogroup'); g.setAttribute('aria-label', it.nombre);
+      Object.entries(datos.respuestas).forEach(([k, txt]) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.dataset.respuesta = k; b.textContent = txt;
+        b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(!!v && v.respuesta === k));
+        g.appendChild(b);
+      });
+      cuerpo.appendChild(g);
+    }
+    if (it.tipo === 'texto') {
+      const tx = document.createElement('input');
+      tx.className = 'inv-texto'; tx.maxLength = 255; tx.placeholder = 'Escribe la respuesta';
+      tx.setAttribute('aria-label', it.nombre);
+      if (v && v.respuesta) tx.value = v.respuesta;
+      cuerpo.appendChild(tx);
+    }
+    if (it.tipo === 'pregunta' || it.tipo === 'texto' || datos.pedido) {
+      li.classList.add('sin-estado');
+      li.appendChild(cuerpo);
+      if (it.tipo !== 'texto') {
+        const obs0 = document.createElement('input');
+        obs0.className = 'inv-obs-item'; obs0.maxLength = 255; obs0.placeholder = 'Observación (opcional)';
+        obs0.setAttribute('aria-label', 'Observación de ' + it.nombre);
+        if (v && v.observacion) obs0.value = v.observacion;
+        cuerpo.appendChild(obs0);
+      } else {
+        const oculto = document.createElement('input'); oculto.type = 'hidden'; oculto.className = 'inv-obs-item'; cuerpo.appendChild(oculto);
+      }
+      return li;
     }
 
     const estados = document.createElement('div');
@@ -131,9 +177,12 @@
     $$('.inv-item').forEach(li => {
       const est = $('[aria-checked="true"]', li);
       const c = $('.inv-cantidad', li);
+      const r = $('[data-respuesta][aria-checked="true"]', li);
+      const tx = $('.inv-texto', li);
       lineas[li.dataset.id] = {
         cantidad: c ? c.value.trim() : '',
-        estado: est ? est.dataset.estado : 'bien',
+        respuesta: r ? r.dataset.respuesta : (tx ? tx.value.trim() : ''),
+        estado: est && est.dataset.estado ? est.dataset.estado : 'bien',
         observacion: $('.inv-obs-item', li).value.trim(),
       };
     });
@@ -154,6 +203,9 @@
     }
     r.items.forEach(it => lista.appendChild(tarjeta(it, r.valores[it.id])));
     $('#obs').value = r.obs || '';
+    $('#obs').placeholder = r.ayudaObs;
+    $('#obs-titulo').textContent = r.ayudaObs;
+    $('#btn-enviar').textContent = r.pedido ? 'ENVIAR PEDIDO' : 'ENVIAR INVENTARIO';
     const env = $('#lista-enviado');
     env.hidden = !r.enviado;
     if (r.enviado) env.textContent = 'Este turno ya lo envió ' + r.enviado.por + ' a las ' + r.enviado.hora + '. No se puede enviar otra vez; si hay un error, avisa al administrador.';
@@ -190,8 +242,15 @@
       $('.inv-cantidad', faltan[0]).focus();
       return;
     }
+    const sinResp = $$('.inv-item').filter(li => (li.dataset.tipo === 'pregunta' && !$('[data-respuesta][aria-checked="true"]', li))
+      || (li.dataset.tipo === 'texto' && !$('.inv-texto', li).value.trim()));
+    if (sinResp.length) {
+      error($('#lista-error'), 'Responde: ' + sinResp.map(li => $('h3', li).textContent).join(', '));
+      sinResp[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     const sinExplicar = $$('.inv-item').filter(li => {
-      const est = $('[aria-checked="true"]', li);
+      const est = $('[data-estado][aria-checked="true"]', li);
       return est && est.dataset.estado === 'danado' && !$('.inv-obs-item', li).value.trim();
     });
     if (sinExplicar.length) {
@@ -205,11 +264,13 @@
     tb.textContent = '';
     $$('.inv-item').forEach(li => {
       const tr = document.createElement('tr');
-      const est = $('[aria-checked="true"]', li);
+      const est = $('[data-estado][aria-checked="true"]', li);
       const c = $('.inv-cantidad', li);
-      const cant = c ? c.value : 'n/a';
+      const r = $('[data-respuesta][aria-checked="true"]', li);
+      const tx = $('.inv-texto', li);
+      const cant = c ? c.value : (r ? r.textContent : (tx ? tx.value : 'n/a'));
       if (est && est.dataset.estado !== 'bien') tr.className = 'fila-dif';
-      [$('h3', li).textContent, cant, est ? est.textContent : 'Bien'].forEach((v, i) => {
+      [$('h3', li).textContent, cant, est ? est.textContent : '—'].forEach((v, i) => {
         const td = document.createElement('td'); td.textContent = v; if (i === 1) td.className = 'num'; tr.appendChild(td);
       });
       tb.appendChild(tr);
@@ -229,7 +290,7 @@
     clearTimeout(autoguardado);
     const r = await api('api/inv/enviar', { method: 'POST', body: { turno, lineas: recoger(), obs: $('#obs').value } });
     ocupado = false;
-    b.disabled = false; b.textContent = 'ENVIAR INVENTARIO';
+    b.disabled = false; b.textContent = datos.pedido ? 'ENVIAR PEDIDO' : 'ENVIAR INVENTARIO';
     if (!r.ok) return error($('#rev-error'), r.error);
     enviado = r;
     cambios = false;
@@ -248,15 +309,44 @@
       li.dataset.dif = p.dif;
       const h = document.createElement('h3'); h.textContent = p.nombre; li.appendChild(h);
       const t = document.createElement('p'); t.className = 'inv-porque-titulo';
-      t.textContent = 'Contaste ' + p.contado + ': ' + (p.dif < 0 ? 'faltan ' + (-p.dif) : 'sobran ' + p.dif) + '. ¿Por qué?';
+      t.textContent = 'El turno anterior contó ' + p.antes + ' y tú ' + p.contado + ': ' + (p.dif < 0 ? 'hay ' + (-p.dif) + ' menos' : 'hay ' + p.dif + ' más') + '. ¿Por qué?';
       li.appendChild(t);
-      const sel = document.createElement('select'); sel.className = 'inv-motivo';
-      sel.setAttribute('aria-label', 'Motivo de ' + p.nombre);
-      const o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Elige el motivo…'; sel.appendChild(o0);
+      const sel = document.createElement('div'); sel.className = 'inv-motivos'; sel.dataset.valor = '';
+      sel.setAttribute('role', 'radiogroup'); sel.setAttribute('aria-label', 'Motivo de ' + p.nombre);
       Object.entries(p.dif < 0 ? datos.motivos : datos.motivosSobra).forEach(([k, txt]) => {
-        const o = document.createElement('option'); o.value = k; o.textContent = txt; sel.appendChild(o);
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.motivo = k;
+        b.textContent = k === 'mal_conteo' && p.anterior ? txt + ': ' + p.anterior : txt;
+        b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', 'false');
+        sel.appendChild(b);
       });
       li.appendChild(sel);
+      const nota = document.createElement('p'); nota.className = 'inv-esperada inv-nota-motivo'; nota.hidden = true; li.appendChild(nota);
+      sel.addEventListener('click', ev => {
+        const b = ev.target.closest('[data-motivo]');
+        if (!b) return;
+        sel.dataset.valor = b.dataset.motivo;
+        $$('[data-motivo]', sel).forEach(x => x.setAttribute('aria-checked', String(x === b)));
+        const k = b.dataset.motivo;
+        nota.hidden = !['mal_conteo', 'compro'].includes(k);
+        nota.textContent = k === 'mal_conteo' ? 'Quedará en la observación: contó mal ' + (p.anterior || 'el turno anterior') + '. No se le cobra a nadie.'
+          : 'Se registra como loza nueva. No se le cobra a nadie.';
+        sel.dispatchEvent(new Event('change'));
+      });
+      if (p.dif < 0) {
+        // ¿Quién lo partió? (solo si se rompió)
+        const quien = document.createElement('div'); quien.className = 'inv-quien'; quien.hidden = true;
+        const lq = document.createElement('span'); lq.className = 'inv-porque-titulo'; lq.textContent = '¿Quién lo partió?'; quien.appendChild(lq);
+        const sq = document.createElement('select'); sq.className = 'inv-responsable'; sq.setAttribute('aria-label', 'Quién partió ' + p.nombre);
+        const q0 = document.createElement('option'); q0.value = ''; q0.textContent = 'Elige la persona…'; sq.appendChild(q0);
+        datos.personal.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.nombre; sq.appendChild(o); });
+        const qo = document.createElement('option'); qo.value = 'otro'; qo.textContent = 'Otro (cliente u otra persona)'; sq.appendChild(qo);
+        const otro = document.createElement('input'); otro.className = 'inv-responsable-otro'; otro.maxLength = 120; otro.hidden = true;
+        otro.placeholder = '¿Quién? Ej.: lo partió un cliente'; otro.setAttribute('aria-label', 'Quién lo partió');
+        quien.append(sq, otro);
+        li.appendChild(quien);
+        sel.addEventListener('change', () => { quien.hidden = sel.dataset.valor !== 'roto'; });
+        sq.addEventListener('change', () => { otro.hidden = sq.value !== 'otro'; if (!otro.hidden) otro.focus(); });
+      }
       const obs = document.createElement('input'); obs.className = 'inv-obs-item'; obs.maxLength = 255;
       obs.placeholder = 'Cuéntale al administrador qué pasó (opcional)'; obs.setAttribute('aria-label', 'Detalle de ' + p.nombre);
       li.appendChild(obs);
@@ -270,17 +360,31 @@
     if (ocupado) return;
     const respuestas = {};
     const items = $$('#preguntas .inv-pregunta');
-    const sin = items.filter(li => !$('.inv-motivo', li).value);
+    const motivo = li => $('.inv-motivos', li).dataset.valor;
+    const sin = items.filter(li => !motivo(li));
     if (sin.length) {
       error($('#porque-error'), 'Elige el motivo de: ' + sin.map(li => $('h3', li).textContent).join(', ') + '.');
-      return $('.inv-motivo', sin[0]).focus();
+      sin[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return $('[data-motivo]', sin[0]).focus();
     }
-    const sinTexto = items.filter(li => ['otro', 'otro_sobra'].includes($('.inv-motivo', li).value) && !$('.inv-obs-item', li).value.trim());
+    const sinTexto = items.filter(li => ['otro', 'otro_sobra'].includes(motivo(li)) && !$('.inv-obs-item', li).value.trim());
     if (sinTexto.length) {
       error($('#porque-error'), 'Escribe qué pasó con: ' + sinTexto.map(li => $('h3', li).textContent).join(', ') + '.');
       return $('.inv-obs-item', sinTexto[0]).focus();
     }
-    items.forEach(li => { respuestas[li.dataset.linea] = { motivo: $('.inv-motivo', li).value, observacion: $('.inv-obs-item', li).value.trim() }; });
+    const sinQuien = items.filter(li => motivo(li) === 'roto' && (!$('.inv-responsable', li).value
+      || ($('.inv-responsable', li).value === 'otro' && $('.inv-responsable-otro', li).value.trim().length < 3)));
+    if (sinQuien.length) {
+      error($('#porque-error'), 'Di quién partió: ' + sinQuien.map(li => $('h3', li).textContent).join(', ') + '.');
+      return $('.inv-responsable', sinQuien[0]).focus();
+    }
+    items.forEach(li => {
+      const rq = $('.inv-responsable', li);
+      respuestas[li.dataset.linea] = {
+        motivo: motivo(li), observacion: $('.inv-obs-item', li).value.trim(),
+        responsable: rq ? rq.value : '', responsable_otro: rq ? $('.inv-responsable-otro', li).value.trim() : '',
+      };
+    });
     ocupado = true;
     const b = $('#btn-explicar'); b.disabled = true;
     const r = await api('api/inv/explicar', { method: 'POST', body: { id: enviado.id, respuestas } });
@@ -292,7 +396,13 @@
 
   function terminarEnvio(r) {
     $('#listo-hora').textContent = r.hora;
-    $('#listo-extra').textContent = (r.diferencias ? 'Se reportaron ' + r.diferencias + ' diferencia(s) o novedad(es).' : 'Sin diferencias.') + (r.correo ? ' ' + r.correo : '');
+    $('#listo-titulo').textContent = r.pedido ? 'Pedido enviado correctamente' : 'Inventario enviado correctamente';
+    $('#listo-extra').textContent = (r.pedido
+      ? (r.porPedir ? 'Hay ' + r.porPedir + ' producto(s) por pedir.' : 'No hay que pedir nada.')
+      : (r.diferencias ? 'Se reportaron ' + r.diferencias + ' diferencia(s) o novedad(es).' : 'Sin diferencias.')) + (r.correo ? ' ' + r.correo : '');
+    const wa = $('#btn-whatsapp');
+    wa.href = r.whatsapp;
+    wa.textContent = r.pedido ? 'Enviar pedido por WhatsApp' : 'Avisar por WhatsApp';
     $('#btn-descargar').href = r.pdf + '&descargar=1';
     const puedeCompartir = !!(navigator.canShare && window.File);
     $('#btn-compartir').hidden = !puedeCompartir;
@@ -334,7 +444,13 @@
     const paso = e.target.closest('[data-paso]');
     if (paso) {
       const input = $('.inv-cantidad', paso.closest('.inv-item'));
-      input.value = Math.max(0, (parseInt(input.value, 10) || 0) + parseInt(paso.dataset.paso, 10));
+      const actual = parseFloat(String(input.value).replace(',', '.')) || 0;
+      input.value = Math.max(0, Math.round((actual + parseInt(paso.dataset.paso, 10)) * 100) / 100);
+      return marcarCambio();
+    }
+    const rsp = e.target.closest('[data-respuesta]');
+    if (rsp) {
+      $$('[data-respuesta]', rsp.parentElement).forEach(b => b.setAttribute('aria-checked', String(b === rsp)));
       return marcarCambio();
     }
     const est = e.target.closest('[data-estado]');

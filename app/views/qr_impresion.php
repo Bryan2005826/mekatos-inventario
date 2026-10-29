@@ -5,7 +5,7 @@
 </div>
 <?php foreach ($areas as $a): $enlace = url('inventario', ['a' => $a['token']]); ?>
   <article class="hoja hoja-qr">
-    <p class="hoja-qr-local"><?= e(Settings::get('nombre_establecimiento')) ?></p>
+    <p class="hoja-qr-local"><?= e(LocalService::nombre((int)$a['local_id'])) ?></p>
     <h1 class="hoja-qr-area"><?= e($a['nombre']) ?></h1>
     <p class="hoja-qr-instruccion">Escanea para hacer el inventario de loza y utensilios</p>
     <canvas class="qr-lienzo qr-grande" width="900" height="900" data-qr="<?= e($enlace) ?>" role="img" aria-label="Código QR de <?= e($a['nombre']) ?>"></canvas>

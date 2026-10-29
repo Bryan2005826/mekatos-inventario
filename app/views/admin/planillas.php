@@ -6,7 +6,7 @@ $etiquetas = ['abierta' => 'En curso', 'cerrada' => 'Cerrada', 'pagada' => 'Paga
 ?>
 <div class="encabezado encabezado-acciones">
   <div>
-    <h1>Planillas</h1>
+    <h1>Planillas · <?= e(LocalService::actual()['nombre']) ?></h1>
     <p class="sub"><?= e($periodo['nombre']) ?> (<?= e($periodo['rango']) ?>) · <?= e($estadoPeriodo) ?></p>
   </div>
   <a class="btn btn-primario btn-grande" href="<?= e(url('admin/planillas/imprimir', ['periodo' => $periodo['inicio'], 'auto' => 1])) ?>">Imprimir todas</a>

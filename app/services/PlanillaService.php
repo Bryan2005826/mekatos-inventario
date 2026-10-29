@@ -144,7 +144,8 @@ final class PlanillaService
         // Pago fijo: se paga el valor que escribió el administrador, sin importar las horas
         $pagoHoras = $fijo ? (int)round((float)($p['valor_fijo'] ?? 0)) : (int)round($minutos * $valorHora / 60);
         $bono = (float)$p['bono_valor'];
-        $descuentos = (float)$p['desc_comida'] + (float)$p['desc_adelanto'] + (float)$p['desc_otros'];
+        $descLoza = (float)($p['desc_loza'] ?? 0);   // loza partida que el administrador cobra
+        $descuentos = (float)$p['desc_comida'] + (float)$p['desc_adelanto'] + (float)$p['desc_otros'] + $descLoza;
         $totalQuincena = $pagoHoras + $bono;
         return [
             'minutos'        => $minutos,
@@ -157,6 +158,7 @@ final class PlanillaService
             'liquidable'     => $fijo ? (float)($p['valor_fijo'] ?? 0) > 0 : $valorHora > 0,
             'pago_horas'     => $pagoHoras,
             'bono'           => $bono,
+            'desc_loza'      => $descLoza,
             'descuentos'     => $descuentos,
             'total_quincena' => $totalQuincena,
             'total_entregar' => $totalQuincena - $descuentos,
@@ -175,7 +177,60 @@ final class PlanillaService
                 $pendientes++;
             }
         }
-        return self::liquidar($min, $planilla) + ['pendientes' => $pendientes, 'jornadas_total' => count($jornadas)];
+        $roturas = self::roturas($planilla);
+        $descLoza = array_sum(array_map(fn($r) => (int)$r['cantidad'] * (float)$r['precio_unitario'], $roturas));
+        return self::liquidar($min, $planilla + ['desc_loza' => $descLoza])
+            + ['pendientes' => $pendientes, 'jornadas_total' => count($jornadas), 'roturas' => $roturas];
+    }
+
+    /** Loza partida por el trabajador dentro de la quincena */
+    public static function roturas(array $planilla): array
+    {
+        static $hayTabla = null;
+        $hayTabla ??= (bool)Database::value("SHOW TABLES LIKE 'roturas'");
+        if (!$hayTabla) {
+            return [];
+        }
+        return Database::all(
+            'SELECT r.*, a.nombre AS area FROM roturas r JOIN inventarios i ON i.id = r.inventario_id JOIN areas a ON a.id = i.area_id
+             WHERE r.trabajador_id = ? AND r.fecha BETWEEN ? AND ? ORDER BY r.fecha, r.id',
+            [$planilla['trabajador_id'], $planilla['periodo_inicio'], $planilla['periodo_fin']]
+        );
+    }
+
+    private static function planillaDeRotura(array $r): ?array
+    {
+        return Database::one('SELECT * FROM planillas WHERE trabajador_id = ? AND ? BETWEEN periodo_inicio AND periodo_fin', [$r['trabajador_id'], $r['fecha']]);
+    }
+
+    /** El administrador le pone precio (por unidad) a lo partido; 0 = no se cobra */
+    public static function precioRotura(int $roturaId, $precio): void
+    {
+        $r = Database::one('SELECT * FROM roturas WHERE id = ?', [$roturaId]) ?? throw new InvalidArgumentException('El registro no existe.');
+        $p = self::planillaDeRotura($r);
+        if ($p && $p['estado'] === 'pagada') {
+            throw new InvalidArgumentException('La planilla ya está pagada. Reábrela para cambiar el cobro.');
+        }
+        $valor = self::dinero($precio, 'Precio');
+        Database::update('roturas', ['precio_unitario' => $valor, 'actualizado' => now_utc()], 'id = :id', ['id' => $roturaId]);
+        Audit::log('rotura_precio', 'planilla', $p ? (int)$p['id'] : null, null,
+            ['elemento' => $r['item_nombre'], 'precio' => (float)$r['precio_unitario']], ['precio' => $valor, 'cantidad' => (int)$r['cantidad']]);
+    }
+
+    /** Quita una rotura de la planilla (por ejemplo si apareció o no fue esa persona) */
+    public static function quitarRotura(int $roturaId, string $motivo): void
+    {
+        $motivo = trim($motivo);
+        if (mb_strlen($motivo) < 3) {
+            throw new InvalidArgumentException('Escribe el motivo para quitarlo.');
+        }
+        $r = Database::one('SELECT * FROM roturas WHERE id = ?', [$roturaId]) ?? throw new InvalidArgumentException('El registro no existe.');
+        $p = self::planillaDeRotura($r);
+        if ($p && $p['estado'] === 'pagada') {
+            throw new InvalidArgumentException('La planilla ya está pagada. Reábrela para hacer cambios.');
+        }
+        Database::run('DELETE FROM roturas WHERE id = ?', [$roturaId]);
+        Audit::log('rotura_quitada', 'planilla', $p ? (int)$p['id'] : null, $motivo, ['elemento' => $r['item_nombre'], 'cantidad' => (int)$r['cantidad']], null);
     }
 
     /* ---------------- Consultas ---------------- */
@@ -189,12 +244,12 @@ final class PlanillaService
         );
     }
 
-    public static function delPeriodo(string $inicio): array
+    public static function delPeriodo(string $inicio, ?int $localId = null): array
     {
         return Database::all(
             'SELECT p.*, t.nombre, t.documento, t.color, t.activo AS trabajador_activo
              FROM planillas p JOIN trabajadores t ON t.id = p.trabajador_id
-             WHERE p.periodo_inicio = ? ORDER BY t.orden, t.nombre',
+             WHERE p.periodo_inicio = ?' . ($localId ? ' AND t.local_id = ' . (int)$localId : '') . ' ORDER BY t.orden, t.nombre',
             [$inicio]
         );
     }

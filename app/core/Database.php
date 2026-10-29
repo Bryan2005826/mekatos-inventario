@@ -85,10 +85,16 @@ final class Database
     public static function transaction(callable $fn)
     {
         $pdo = self::pdo();
+        if ($pdo->inTransaction()) {
+            // ya hay una transacción abierta: esta parte se une a ella
+            return $fn();
+        }
         $pdo->beginTransaction();
         try {
             $result = $fn();
-            $pdo->commit();
+            if ($pdo->inTransaction()) { // un CREATE/ALTER hace commit implícito en MySQL
+                $pdo->commit();
+            }
             return $result;
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {

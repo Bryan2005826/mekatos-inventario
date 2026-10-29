@@ -9,7 +9,8 @@ final class ConfigController
         $codigo = $_SESSION['_codigo'] ?? null;
         unset($_SESSION['_codigo']);
         view('admin/dispositivos', [
-            'dispositivos' => Database::all('SELECT * FROM dispositivos ORDER BY activo DESC, creado DESC'),
+            'dispositivos' => Database::all('SELECT * FROM dispositivos WHERE local_id = ? ORDER BY activo DESC, creado DESC', [LocalService::actualId()]),
+            'local'        => LocalService::actual(),
             'actual'       => DispositivoService::actual(),
             'codigo'       => $codigo,
             'seccion'      => 'dispositivos',
@@ -26,15 +27,15 @@ final class ConfigController
             redirect('admin/dispositivos');
         }
         if ($id) {
-            $d = Database::one('SELECT * FROM dispositivos WHERE id = ? AND activo = 1', [$id]);
+            $d = Database::one('SELECT * FROM dispositivos WHERE id = ? AND activo = 1 AND local_id = ?', [$id, LocalService::actualId()]);
             if (!$d) {
                 flash('error', 'El dispositivo no existe o fue revocado.');
                 redirect('admin/dispositivos');
             }
             $nombre = $d['nombre'];
         }
-        $r = DispositivoService::crearCodigo($nombre, $id);
-        Audit::log('kiosco_codigo_generado', 'dispositivo', $r['id'], null, null, ['nombre' => $nombre]);
+        $r = DispositivoService::crearCodigo($nombre, $id, LocalService::actualId());
+        Audit::log('kiosco_codigo_generado', 'dispositivo', $r['id'], null, null, ['nombre' => $nombre, 'local' => LocalService::actual()['nombre']]);
         $_SESSION['_codigo'] = $r + ['nombre' => $nombre];
         redirect('admin/dispositivos');
     }
@@ -57,7 +58,8 @@ final class ConfigController
         Auth::requireAdmin();
         view('admin/configuracion', [
             's'        => Settings::all(),
-            'redes'    => Database::all('SELECT * FROM redes_autorizadas ORDER BY creado DESC'),
+            'redes'    => Database::all('SELECT * FROM redes_autorizadas WHERE local_id = ? ORDER BY creado DESC', [LocalService::actualId()]),
+            'local'    => LocalService::actual(),
             'ipActual' => client_ip(),
             'seccion'  => 'configuracion',
         ]);
@@ -83,6 +85,7 @@ final class ConfigController
             'retencion_fotos_dias'     => $num(input('retencion_fotos_dias'), 0, 3650),
             'valor_hora_defecto'       => $num(input('valor_hora_defecto') === '' ? 0 : input('valor_hora_defecto'), 0, 1000000),
             'mensaje_planilla'         => mb_substr(trim((string)input('mensaje_planilla', '')), 0, 160),
+            'whatsapp_admin'           => self::numeroWhatsapp((string)input('whatsapp_admin', '')),
             'foto_obligatoria'         => input('foto_obligatoria') === '1' ? '1' : '0',
             'validar_red'              => input('validar_red') === '1' ? '1' : '0',
             'mensaje_informal'         => input('mensaje_informal') === '1' ? '1' : '0',
@@ -121,14 +124,14 @@ final class ConfigController
             redirect('admin/configuracion');
         }
         if (Database::value('SELECT 1 FROM redes_autorizadas WHERE ip = ?', [$ip])) {
-            Database::update('redes_autorizadas', ['activo' => 1], 'ip = :ip', ['ip' => $ip]);
+            Database::update('redes_autorizadas', ['activo' => 1, 'local_id' => LocalService::actualId()], 'ip = :ip', ['ip' => $ip]);
         } else {
             Database::insert('redes_autorizadas', [
-                'ip' => $ip, 'descripcion' => mb_substr((string)input('descripcion', ''), 0, 120) ?: null, 'activo' => 1, 'creado' => now_utc(),
+                'local_id' => LocalService::actualId(), 'ip' => $ip, 'descripcion' => mb_substr((string)input('descripcion', ''), 0, 120) ?: null, 'activo' => 1, 'creado' => now_utc(),
             ]);
         }
-        Audit::log('red_autorizada', 'red', null, null, null, ['ip' => $ip]);
-        flash('ok', "IP $ip autorizada.");
+        Audit::log('red_autorizada', 'red', null, null, null, ['ip' => $ip, 'local' => LocalService::actual()['nombre']]);
+        flash('ok', "IP $ip autorizada para " . LocalService::actual()['nombre'] . '.');
         redirect('admin/configuracion');
     }
 
@@ -169,5 +172,18 @@ final class ConfigController
         view('admin/auditoria', [
             'rows' => $rows, 'pagina' => $pagina, 'paginas' => max(1, (int)ceil($total / $porPagina)), 'seccion' => 'auditoria',
         ]);
+    }
+
+    /** Número de WhatsApp con indicativo de país (Colombia por defecto si son 10 dígitos) */
+    private static function numeroWhatsapp(string $n): ?string
+    {
+        $n = preg_replace('/\D/', '', $n);
+        if ($n === '') {
+            return '';
+        }
+        if (strlen($n) === 10 && $n[0] === '3') {
+            $n = '57' . $n;
+        }
+        return (strlen($n) >= 11 && strlen($n) <= 15) ? $n : null;
     }
 }

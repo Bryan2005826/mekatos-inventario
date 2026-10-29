@@ -39,13 +39,26 @@ final class AdminController
         } catch (Throwable $e) {
             error_log('[asistencia] cola de correo: ' . $e->getMessage());
         }
-        view('admin/resumen', AsistenciaService::resumenDia() + [
-            'tablero' => InventarioService::tablero(hoy_local()),
-            'alertasStock' => InventarioService::alertasStock(),
-            'ultimosInv' => InventarioService::historial(['desde' => (new DateTimeImmutable('now', app_tz()))->modify('-3 days')->format('Y-m-d'), 'hasta' => hoy_local()]),
-            'dispositivos' => (int)Database::value('SELECT COUNT(*) FROM dispositivos WHERE activo = 1 AND token_hash IS NOT NULL'),
+        $loc = LocalService::actualId();
+        view('admin/resumen', AsistenciaService::resumenDia($loc) + [
+            'tablero' => InventarioService::tablero(hoy_local(), $loc),
+            'alertasStock' => InventarioService::alertasStock($loc),
+            'ultimosInv' => InventarioService::historial(['desde' => (new DateTimeImmutable('now', app_tz()))->modify('-3 days')->format('Y-m-d'), 'hasta' => hoy_local(), 'local_id' => $loc]),
+            'dispositivos' => (int)Database::value('SELECT COUNT(*) FROM dispositivos WHERE activo = 1 AND token_hash IS NOT NULL AND local_id = ?', [$loc]),
+            'local' => LocalService::actual(),
             'seccion' => 'resumen',
         ]);
+    }
+
+    /** Cambia el local que se está viendo en el panel */
+    public function local(): void
+    {
+        Auth::requireAdmin();
+        LocalService::cambiar((int)input('id'));
+        $volver = (string)input('volver', 'admin');
+        // vistas de un registro puntual (una planilla, una jornada...) vuelven a su listado
+        $volver = preg_replace('#/(ver|editar|jornada|nueva)$#', '', $volver);
+        redirect(str_starts_with($volver, 'admin') ? $volver : 'admin');
     }
 
     public function ayuda(): void

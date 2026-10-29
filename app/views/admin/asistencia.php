@@ -1,5 +1,5 @@
 <div class="encabezado encabezado-acciones">
-  <h1>Asistencia</h1>
+  <h1>Asistencia · <?= e(LocalService::actual()['nombre']) ?></h1>
   <a class="btn btn-secundario" href="<?= e(url('admin/asistencia/nueva', $trab ? ['trabajador' => $trab] : [])) ?>">Registrar jornada manual</a>
 </div>
 

@@ -8,6 +8,7 @@
 
 <nav class="bloque guia-indice" aria-label="Contenido de la guía">
   <ol>
+    <li><a href="#g-locales">Mekatos 1 y Mekatos 2</a></li>
     <li><a href="#g-inicio">Primera puesta en marcha</a></li>
     <li><a href="#g-tablet">Preparar la tablet del local</a></li>
     <li><a href="#g-dia">El día a día</a></li>
@@ -21,6 +22,17 @@
 </nav>
 
 <article class="guia">
+<section class="bloque" id="g-locales">
+  <h2>Mekatos 1 y Mekatos 2</h2>
+  <ul>
+    <li>Arriba, en la barra oscura, eliges qué local estás viendo. Todo el panel muestra solo ese local: trabajadores, asistencia, planillas, loza, pedidos, códigos QR, kiosco e internet autorizado.</li>
+    <li>Cada local tiene <strong>su propio celular de kiosco</strong>. El celular de Mekatos 1 solo muestra al personal de Mekatos 1, y si alguien de un local intenta marcar en el celular del otro, se rechaza y queda en Intentos rechazados.</li>
+    <li>La entrada y la salida <strong>solo</strong> se registran en esos celulares autorizados. Los QR de loza y de pedidos sí funcionan desde cualquier celular, pero solo muestran al personal de ese local.</li>
+    <li>Mekatos 2 tiene la misma loza de Mekatos 1 (Fríos, Cocina y Greca) pero independiente: su propio conteo, sus propios QR. Elimina en Categorías y productos lo que allá no se maneja.</li>
+    <li>Un trabajador que cambia de local: Trabajadores › Editar › Local donde trabaja.</li>
+  </ul>
+</section>
+
 <section class="bloque" id="g-inicio">
   <h2>1. Primera puesta en marcha</h2>
   <ol>
@@ -37,8 +49,8 @@
 <section class="bloque" id="g-tablet">
   <h2>2. Preparar la tablet del local</h2>
   <ol>
-    <li>Usa Google Chrome actualizado. Conecta la tablet al Wi-Fi del local.</li>
-    <li>Desde tu celular, en <a href="<?= e(url('admin/dispositivos')) ?>">Kiosco</a>, escribe un nombre (por ejemplo "Tablet entrada") y pulsa <strong>Generar código</strong>.</li>
+    <li>Usa Google Chrome actualizado. Conecta el celular al Wi-Fi del local.</li>
+    <li>Arriba elige el local (Mekatos 1 o Mekatos 2). Luego, en <a href="<?= e(url('admin/dispositivos')) ?>">Kiosco</a>, escribe un nombre (por ejemplo "Celular Mekatos 1") y pulsa <strong>Generar código</strong>. Haz lo mismo con el otro local.</li>
     <li>En la tablet abre <code><?= e(url('activar')) ?></code> y escribe el código. Vence en 15 minutos.</li>
     <li>Menú de Chrome › <strong>Agregar a la pantalla principal</strong> / <strong>Instalar aplicación</strong>. Así abre a pantalla completa.</li>
     <li>La primera vez que alguien marque, Chrome pedirá permiso para la cámara: toca <strong>Permitir</strong>.</li>
@@ -79,6 +91,7 @@
     <li>El día 15 y el último del mes, a la medianoche, la quincena se cierra sola (al primer uso del panel después de esa hora) y empieza la nueva. Nada se borra.</li>
     <li>Abre la planilla de cada uno, escribe el <strong>valor de la hora</strong> y el total se calcula solo. Agrega bono, comida, adelanto u otros descuentos si aplica. El valor de la hora se recuerda para la siguiente quincena.</li>
     <li><strong>Trabajador de pago fijo:</strong> en la planilla activa esa casilla y escribe cuánto se le paga en la quincena. Ese valor reemplaza el cálculo por horas (las horas se siguen mostrando). Las siguientes quincenas de ese trabajador quedan igual hasta que lo cambies.</li>
+    <li><strong>Loza partida:</strong> si en un inventario el trabajador dice que alguien partió algo, aparece en la planilla de esa persona en "Loza partida en esta quincena". Escribe el precio de cada unidad y se descuenta solo del total. Si no corresponde cobrarlo, usa "Quitar" con motivo. Lo que partió un cliente u otra persona no va a ninguna planilla.</li>
     <li><strong>Imprimir todas</strong> saca una hoja por trabajador con el formato del local, lista para que firme.</li>
     <li>Cuando pagues y firmen, pulsa <strong>Marcar como pagada</strong>: las jornadas de esa quincena quedan bloqueadas. Si hay un error, <strong>Reabrir</strong> con motivo.</li>
     <li>No se puede marcar como pagada una planilla con jornadas sin salida.</li>
@@ -86,18 +99,28 @@
 </section>
 
 <section class="bloque" id="g-inventario">
-  <h2>6. Inventario por QR</h2>
+  <h2>6. Inventario, caja y pedidos por QR</h2>
   <ul>
     <li>El trabajador escanea el QR del área con su celular, toca su nombre, escribe el PIN, elige el turno (mediodía o noche) y cuenta. Ve la foto de cada utensilio.</li>
-    <li><strong>El primer inventario fija el stock:</strong> lo hace el trabajador del turno, como siempre, y lo que cuente queda como "lo que debe haber". No le pregunta nada.</li>
-    <li><strong>Conteo a ciegas:</strong> el trabajador nunca ve cuánto debe haber. Cuenta, revisa y envía; al enviar, las cantidades quedan fijas y no se pueden cambiar.</li>
-    <li>Después de enviar, si <strong>falta o sobra</strong> algo, le dice cuánto y le pregunta <strong>por qué</strong> (se rompió, no aparece, está en otra área, llegó nuevo…). Si todo cuadra, no pregunta nada. Si cierra sin responder, el inventario queda marcado "Sin explicar".</li>
-    <li>Cuando falta o sobra, te llega un correo con el asunto "FALTAN…" o "SOBRAN…", y aparece en el Resumen del día.</li>
-    <li>En <a href="<?= e(url('admin/stock')) ?>">Control de loza</a> ves el stock, el último conteo y el motivo. Lo roto o perdido lo das de baja; lo nuevo lo sumas. Así los siguientes inventarios no repiten la misma diferencia.</li>
-    <li>Si el primer conteo quedó mal: Control de loza › Reiniciar stock, y el siguiente inventario lo vuelve a fijar. También puedes contar tú mismo con "Hacer conteo como administrador".</li>
+    <li><strong>Dos conteos al día:</strong> mediodía y noche. <strong>Cada conteo queda como las unidades que hay en el local</strong>, falte o sobre. El siguiente turno se compara contra ese conteo.</li>
+    <li><strong>Conteo a ciegas:</strong> el trabajador no ve el conteo anterior. Cuenta, revisa y envía; al enviar, las cantidades quedan fijas.</li>
+    <li>Si no coincide con el conteo anterior, le pregunta <strong>por qué</strong> con botones:
+      <ul>
+        <li>Si hay <strong>más</strong>: "El dueño compró loza" o "El turno anterior contó mal".</li>
+        <li>Si hay <strong>menos</strong>: "Se rompió" (y elige quién lo partió), "El turno anterior contó mal", "No aparece" u "Otro motivo".</li>
+      </ul>
+      Con "El turno anterior contó mal" el sistema pone solo, en la observación, el nombre de quien hizo el conteo anterior (por ejemplo, "Contó mal: Ronaldo (mediodía)"). Eso <strong>no se cobra</strong>. Solo se cobra lo que se partió, a quien lo partió. Si fue un cliente, no se le descuenta a nadie.</li>
+    <li>Si cierra sin responder, queda marcado "Sin explicar". Las diferencias aparecen en el Resumen del día y en el correo.</li>
+    <li>En <a href="<?= e(url('admin/stock')) ?>">Control de loza</a> ves cuánto hay ahora, el conteo anterior, la diferencia, el motivo y quién lo partió. También puedes contar tú mismo con "Hacer conteo como administrador".</li>
     <li>Puede guardar borrador; se guarda solo cada pocos segundos.</li>
     <li>Al enviar se genera el PDF, se guarda en el panel, llega al correo (si está configurado) y el trabajador puede compartirlo por WhatsApp.</li>
     <li>Cada área y turno se envía una sola vez por día. Si hay un error, corrígelo tú en <a href="<?= e(url('admin/inventarios')) ?>">Historial de inventarios</a>, con motivo; el PDF se actualiza.</li>
+    <li><strong>¿Quién lo partió?</strong> Si falta algo y el motivo es "se rompió", el trabajador elige el nombre de quien lo partió (o "Otro" y escribe, por ejemplo, "un cliente") y puede dejar una nota. Pon el <strong>precio de reposición</strong> de cada producto en Categorías y productos para que el cobro salga solo.</li>
+    <li><strong>Categorías:</strong> en <a href="<?= e(url('admin/inventario')) ?>">Categorías y productos</a> puedes crear categorías nuevas (no tiene que ser loza), cambiarles el nombre y el texto de novedades, agregar, editar o eliminar productos. Cada categoría tiene su QR.</li>
+    <li><strong>Caja:</strong> tiene preguntas de Sí / Poco / No (monedas o sencillo, hojas de arqueo) y una respuesta escrita (cuánto café queda), más observaciones. Puedes agregar más preguntas eligiendo "Cómo se registra".</li>
+    <li><strong>Listas de pedido</strong> de Mekatos 1 (Gaseosa y cerveza, Cocina, Fríos, Panadería, Cafetería y Caja), cargadas de los formatos del local. Cada producto tiene un <strong>mínimo</strong>, lo que <strong>debe haber</strong> (cantidad óptima) y su unidad. El trabajador ve esos datos, cuenta lo que hay (puede poner 0.5 para medio) y el sistema calcula: si hay el mínimo o menos, pide lo que falte para llegar a lo que debe haber. Si un producto no tiene mínimo, se pide apenas haya menos de lo que debe haber.</li>
+    <li>Al enviar cada lista, el trabajador tiene un botón para mandarte <strong>ese pedido por WhatsApp</strong>: un mensaje por categoría, listo para reenviar al proveedor. Todos los pedidos quedan guardados en Historial (filtro "Pedidos"), con su PDF, y desde ahí puedes reenviarlos.</li>
+    <li>El número de WhatsApp que recibe los pedidos y novedades se configura en <a href="<?= e(url('admin/configuracion')) ?>">Configuración</a>.</li>
     <li>Si un QR se daña o alguien lo copió para usarlo fuera del local: Códigos QR › Cambiar este código, e imprime el nuevo.</li>
   </ul>
 </section>

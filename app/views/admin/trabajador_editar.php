@@ -11,6 +11,10 @@
     <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
     <label class="campo"><span>Nombre</span><input name="nombre" required maxlength="60" value="<?= e($t['nombre']) ?>"></label>
     <label class="campo"><span>Documento</span><input name="documento" maxlength="30" value="<?= e($t['documento']) ?>"></label>
+    <label class="campo"><span>Local donde trabaja</span>
+      <select name="local_id"><?php foreach (LocalService::todos() as $l): ?><option value="<?= (int)$l['id'] ?>" <?= (int)$l['id'] === (int)$t['local_id'] ? 'selected' : '' ?>><?= e($l['nombre']) ?></option><?php endforeach; ?></select>
+      <small>Solo puede marcar en el celular de su local.</small>
+    </label>
     <label class="campo"><span>Orden en el kiosco</span><input name="orden" type="number" min="0" max="999" value="<?= (int)$t['orden'] ?>"></label>
     <fieldset class="campo">
       <legend>Color de la ficha</legend>

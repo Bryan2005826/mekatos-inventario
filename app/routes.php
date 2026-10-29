@@ -33,6 +33,7 @@ return [
     'POST admin/login'  => [AdminController::class, 'login'],
     'POST admin/salir'  => [AdminController::class, 'salir'],
     'GET admin'         => [AdminController::class, 'resumen'],
+    'POST admin/local'  => [AdminController::class, 'local'],
     'GET admin/cuenta'  => [AdminController::class, 'cuenta'],
     'POST admin/cuenta' => [AdminController::class, 'guardarCuenta'],
 
@@ -59,6 +60,7 @@ return [
     'POST admin/planillas/pagar'    => [PlanillasController::class, 'pagar'],
     'POST admin/planillas/reabrir'  => [PlanillasController::class, 'reabrir'],
     'GET admin/planillas/imprimir'  => [PlanillasController::class, 'imprimir'],
+    'POST admin/planillas/rotura'   => [PlanillasController::class, 'rotura'],
 
     'GET admin/inventario'               => [InventarioAdminController::class, 'catalogo'],
     'POST admin/inventario/item/crear'   => [InventarioAdminController::class, 'crearItem'],
@@ -66,6 +68,8 @@ return [
     'POST admin/inventario/item/estado'  => [InventarioAdminController::class, 'estadoItem'],
     'POST admin/inventario/area/guardar' => [InventarioAdminController::class, 'guardarArea'],
     'POST admin/inventario/area/crear'   => [InventarioAdminController::class, 'crearArea'],
+    'POST admin/inventario/area/quitar'  => [InventarioAdminController::class, 'quitarArea'],
+    'POST admin/inventario/item/eliminar' => [InventarioAdminController::class, 'eliminarItem'],
     'GET admin/qr'                       => [InventarioAdminController::class, 'qr'],
     'POST admin/qr/regenerar'            => [InventarioAdminController::class, 'regenerarQr'],
     'GET admin/qr/imprimir'              => [InventarioAdminController::class, 'imprimirQr'],

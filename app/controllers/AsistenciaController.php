@@ -27,7 +27,7 @@ final class AsistenciaController
         [$desde, $hasta] = $this->rango();
         $trab = (int)input('trabajador', 0) ?: null;
         $estado = in_array(input('estado'), ['abierta', 'completa', 'incompleta', 'anulada'], true) ? input('estado') : null;
-        $jornadas = AsistenciaService::listar($trab, $desde, $hasta, $estado);
+        $jornadas = AsistenciaService::listar($trab, $desde, $hasta, $estado, LocalService::actualId());
         $totales = [];
         foreach ($jornadas as $j) {
             $id = $j['trabajador_id'];
@@ -42,7 +42,7 @@ final class AsistenciaController
         view('admin/asistencia', [
             'jornadas'     => $jornadas,
             'totales'      => $totales,
-            'trabajadores' => Database::all('SELECT id, nombre FROM trabajadores ORDER BY activo DESC, orden, nombre'),
+            'trabajadores' => Database::all('SELECT id, nombre FROM trabajadores WHERE local_id = ? ORDER BY activo DESC, orden, nombre', [LocalService::actualId()]),
             'desde' => $desde, 'hasta' => $hasta, 'trab' => $trab, 'estado' => $estado,
             'seccion' => 'asistencia',
         ]);
@@ -92,7 +92,7 @@ final class AsistenciaController
     {
         Auth::requireAdmin();
         view('admin/jornada_nueva', [
-            'trabajadores' => TrabajadorService::activos(),
+            'trabajadores' => TrabajadorService::activos(LocalService::actualId()),
             'trab'         => (int)input('trabajador', 0),
             'seccion'      => 'asistencia',
         ]);
@@ -130,11 +130,14 @@ final class AsistenciaController
     public function rechazos(): void
     {
         Auth::requireAdmin();
+        // del local actual (por el trabajador o el dispositivo); los intentos sin ninguno se ven en ambos
         $rows = Database::all(
             'SELECT r.*, t.nombre, d.nombre AS dispositivo FROM intentos_rechazados r
              LEFT JOIN trabajadores t ON t.id = r.trabajador_id
              LEFT JOIN dispositivos d ON d.id = r.dispositivo_id
-             ORDER BY r.creado DESC LIMIT 300'
+             WHERE COALESCE(t.local_id, d.local_id, ?) = ?
+             ORDER BY r.creado DESC LIMIT 300',
+            [LocalService::actualId(), LocalService::actualId()]
         );
         view('admin/rechazos', ['rechazos' => $rows, 'seccion' => 'rechazos']);
     }

@@ -6,10 +6,12 @@ final class KioscoController
     public function inicio(): void
     {
         Auth::logoutWorker();
+        $disp = DispositivoService::actual();
         view('kiosco/inicio', [
-            'trabajadores' => TrabajadorService::activos(),
-            'dispositivo'  => DispositivoService::actual(),
-            'establecimiento' => Settings::get('nombre_establecimiento'),
+            // el celular de cada local solo muestra a su personal
+            'trabajadores' => TrabajadorService::activos($disp ? (int)$disp['local_id'] : null),
+            'dispositivo'  => $disp,
+            'establecimiento' => $disp ? LocalService::nombre((int)$disp['local_id']) : Settings::get('nombre_establecimiento'),
             'fotoObligatoria' => Settings::bool('foto_obligatoria'),
         ], 'kiosco');
     }
@@ -106,15 +108,21 @@ final class KioscoController
         }
         $dispId = (int)$disp['id'];
 
+        // 1b. El celular debe ser el del local del trabajador
+        $t = TrabajadorService::buscar((int)$w['id']);
+        if ($t && (int)$t['local_id'] !== (int)$disp['local_id']) {
+            $this->rechazo($w, $tipo, 'Celular de otro local (' . LocalService::nombre((int)$disp['local_id']) . ')',
+                "$base Motivo: este celular es el de " . LocalService::nombre((int)$disp['local_id']) . '. Registra en el celular de ' . LocalService::nombre((int)$t['local_id']) . '.', $dispId);
+        }
+
         // 2. Red del local (si está activada)
-        $red = RedService::validar();
+        $red = RedService::validar((int)$disp['local_id']);
         if (!$red['ok']) {
             $this->rechazo($w, $tipo, 'IP fuera de la red autorizada: ' . client_ip(),
                 "$base Motivo: el kiosco no está conectado al internet del local. Revisa el Wi-Fi y vuelve a intentarlo.", $dispId);
         }
 
         // 3. Consentimiento y foto de evidencia
-        $t = TrabajadorService::buscar((int)$w['id']);
         if (!$t || !(int)$t['activo']) {
             json_response(['ok' => false, 'error' => 'Trabajador no disponible.'], 422);
         }

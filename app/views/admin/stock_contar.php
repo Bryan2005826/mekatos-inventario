@@ -39,7 +39,8 @@
       <select name="turno"><?php foreach (InventarioService::TURNOS as $k => $v): ?><option value="<?= $k ?>" <?= $turno === $k ? 'selected' : '' ?>><?= $v ?></option><?php endforeach; ?></select>
     </label>
     <label class="campo"><span>Observaciones</span><textarea name="observaciones" rows="2" maxlength="1000" placeholder="Conteo inicial antes de empezar con el sistema"></textarea></label>
-    <label class="interruptor"><input type="checkbox" name="fijar_stock" value="1" checked><span><strong>Usar estas cantidades como el stock del área</strong> (lo que debe haber)</span></label>
+    <label class="interruptor"><input type="checkbox" name="fijar_stock" value="1" checked><span><strong>Es un conteo inicial</strong>: no reportar diferencias con el conteo anterior</span></label>
+    <p class="sub">Como cualquier conteo, lo que escribas queda como las unidades que hay en el local.</p>
     <p class="sub">Este conteo no ocupa el turno de los trabajadores: ellos igual deben enviar su inventario de mediodía y noche.</p>
     <button class="btn btn-primario" type="submit" <?= $items ? '' : 'disabled' ?>>Guardar conteo</button>
   </section>

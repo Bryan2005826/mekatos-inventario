@@ -30,7 +30,7 @@
       document.querySelectorAll('[data-etiqueta-pago]').forEach(el => { el.textContent = esFijo ? 'Pago fijo' : 'Pago por horas'; });
       const pago = esFijo ? Math.round(val('valor_fijo')) : Math.round(minutos * val('valor_hora') / 60);
       const bono = val('bono_valor');
-      const desc = val('desc_comida') + val('desc_adelanto') + val('desc_otros');
+      const desc = val('desc_comida') + val('desc_adelanto') + val('desc_otros') + (parseFloat(form.dataset.descLoza) || 0);
       const salida = { pago: pago, bono: bono, descuentos: desc, entregar: pago + bono - desc };
       document.querySelectorAll('[data-salida]').forEach(el => { el.textContent = pesos(salida[el.dataset.salida]); });
     };
@@ -81,6 +81,17 @@
     document.body.appendChild(a);
     a.click();
     a.remove();
+  });
+
+  // Catálogo: los campos de cantidad solo aplican a productos que se cuentan
+  const ajustarItem = f => {
+    const sel = f.querySelector('[data-tipo-item]');
+    const esCantidad = !sel || sel.value === 'cantidad';
+    f.querySelectorAll('[data-solo-cantidad]').forEach(el => { el.hidden = !esCantidad; });
+  };
+  document.querySelectorAll('[data-form-item]').forEach(ajustarItem);
+  document.addEventListener('change', e => {
+    if (e.target.matches('[data-tipo-item]')) ajustarItem(e.target.closest('[data-form-item]'));
   });
 
   const base = document.querySelector('meta[name="base"]');

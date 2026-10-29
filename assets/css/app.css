@@ -110,6 +110,16 @@ textarea { resize: vertical; }
 .marca span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .marca-sello { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--mango); color: var(--pizarra); font-weight: 800; flex: none; }
 .admin-top-acciones { display: flex; align-items: center; gap: .8rem; }
+.locales { display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.12); margin: 0 auto 0 1rem; }
+.local-btn { border: 0; background: transparent; color: rgba(255,255,255,.82); font: 700 .92rem var(--f-texto); padding: .45rem .85rem; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+.local-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+.local-btn[aria-current="true"] { background: var(--mango); color: var(--pizarra); }
+.local-btn:focus-visible { outline: 3px solid var(--mango); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .admin-top { flex-wrap: wrap; }
+  .locales { order: 3; width: 100%; margin: .2rem 0 0; }
+  .local-btn { flex: 1; }
+}
 .admin-top-acciones .btn-quieto { color: #fff; border-color: rgba(255,255,255,.35); }
 .admin-top-acciones .enlace-quieto { color: #fff; font-size: .92rem; }
 .admin-top-acciones .btn { white-space: nowrap; }
@@ -388,6 +398,14 @@ body.impresion .hoja { margin: 0 auto 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.15
 .inv-dif { margin: 0; font-weight: 700; font-size: .9rem; color: var(--entrada); min-height: 1.2em; }
 .con-dif .inv-dif { color: var(--alerta); }
 .inv-estados { display: flex; flex-wrap: wrap; gap: .3rem; }
+.inv-motivos { display: grid; gap: .45rem; margin: .5rem 0; }
+.inv-motivos button { min-height: 52px; padding: .55rem .9rem; border-radius: 14px; border: 2px solid var(--linea); background: var(--papel); color: var(--tinta); font: 700 1rem var(--f-texto); text-align: left; cursor: pointer; }
+.inv-motivos button:hover { border-color: var(--pizarra-3, var(--pizarra)); }
+.inv-motivos button[aria-checked="true"] { background: var(--pizarra); border-color: var(--pizarra); color: #fff; }
+.inv-motivos button[data-motivo="roto"][aria-checked="true"] { background: var(--alerta); border-color: var(--alerta); }
+.inv-motivos button:focus-visible { outline: 3px solid var(--mango); outline-offset: 2px; }
+.inv-nota-motivo { font-weight: 700; }
+.inv-meta { font-weight: 700; color: var(--pizarra); }
 .inv-estados button { min-height: 38px; padding: .2rem .8rem; border-radius: 999px; border: 2px solid var(--linea); background: var(--papel); color: var(--tinta); font: 700 .88rem var(--f-texto); cursor: pointer; }
 .inv-estados button[aria-checked="true"] { background: var(--pizarra); border-color: var(--pizarra); color: #fff; }
 .inv-estados button[data-estado="danado"][aria-checked="true"] { background: var(--alerta); border-color: var(--alerta); }
@@ -462,3 +480,16 @@ body.impresion .hoja { margin: 0 auto 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.15
 .interruptor-grande { background: var(--azulejo); border: 2px solid var(--linea); border-radius: var(--radio-sm); padding: .8rem; margin: 0; }
 .interruptor-grande:has(input:checked) { border-color: var(--pizarra-3); background: #EAF4F1; }
 .interruptor-grande small { color: var(--tinta-2); }
+
+/* Preguntas, respuestas escritas, quién lo partió, WhatsApp */
+.inv-respuestas button { min-width: 72px; min-height: 46px; font-size: 1rem; }
+.inv-respuestas button[data-respuesta="no"][aria-checked="true"] { background: var(--alerta); border-color: var(--alerta); }
+.inv-respuestas button[data-respuesta="poco"][aria-checked="true"] { background: #8A6D0B; border-color: #8A6D0B; }
+.inv-texto { min-height: 50px; font-size: 1.05rem; }
+.inv-quien { display: grid; gap: .4rem; }
+.btn-wa { background: #128C4B; }
+.btn-wa:hover { background: #0E6E3B; }
+
+.catalogo-estado { display: grid; gap: .4rem; align-content: start; }
+.catalogo-form .campo-ancho { grid-column: span 2; }
+@media (max-width: 700px) { .catalogo-form .campo-ancho { grid-column: auto; } }

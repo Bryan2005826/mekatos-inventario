@@ -1,11 +1,18 @@
 <?php
 /** Hoja de planilla con el formato del establecimiento. Variables: $p, $c, $jornadas */
 $filas = [];
+// Loza partida por fecha: aparece en la fila de ese día
+$partido = [];
+foreach ($c['roturas'] ?? [] as $r) {
+    $partido[$r['fecha']][] = 'partió ' . (int)$r['cantidad'] . ' ' . $r['item_nombre'];
+}
+$yaMostrado = [];
 foreach ($jornadas as $j) {
     $e = utc_to_local($j['entrada']);
     $s = utc_to_local($j['salida']);
     $completa = $j['estado'] === 'completa';
     $m = $completa ? (int)$j['minutos_trabajados'] : null;
+    $filaNota = isset($yaMostrado[$j['fecha']]);
     $filas[] = [
         'mes'   => $e ? nombre_mes((int)$e->format('n')) : '',
         'dia'   => $e ? $e->format('j') : '',
@@ -15,8 +22,9 @@ foreach ($jornadas as $j) {
         'sm'    => $s ? $s->format('i') : '',
         'h'     => $m !== null ? intdiv($m, 60) : '',
         'm'     => $m !== null ? str_pad((string)($m % 60), 2, '0', STR_PAD_LEFT) : '',
-        'nota'  => $completa ? '' : 'sin salida',
+        'nota'  => trim(($completa ? '' : 'sin salida ') . (isset($partido[$j['fecha']]) && !$filaNota ? implode(', ', $partido[$j['fecha']]) : '')),
     ];
+    $yaMostrado[$j['fecha']] = true;
 }
 $minimo = 30;
 while (count($filas) < $minimo) {
@@ -76,6 +84,7 @@ $dinero = fn($v) => (float)$v != 0 ? fmt_pesos($v) : '';
       <tr><th>Bono extra</th><td class="desc"><?= e($p['bono_descripcion'] ?? '') ?></td><td class="valor"><?= e($dinero($p['bono_valor'])) ?></td></tr>
       <tr><th>Comida −</th><td class="desc"></td><td class="valor"><?= e($dinero($p['desc_comida'])) ?></td></tr>
       <tr><th>Adelanto efectivo −</th><td class="desc"></td><td class="valor"><?= e($dinero($p['desc_adelanto'])) ?></td></tr>
+      <tr><th>Loza partida −</th><td class="desc"><?= $c['roturas'] ? e(mb_strimwidth(implode(', ', array_map(fn($r) => (int)$r['cantidad'] . ' ' . $r['item_nombre'], $c['roturas'])), 0, 40, '…')) : '' ?></td><td class="valor"><?= e($dinero($c['desc_loza'])) ?></td></tr>
       <tr><th>Otros −</th><td class="desc"></td><td class="valor"><?= e($dinero($p['desc_otros'])) ?></td></tr>
       <tr><th>Total descuentos</th><td class="desc"></td><td class="valor"><?= e(fmt_pesos($c['descuentos'])) ?></td></tr>
       <tr><th>Total quincena</th><td class="desc"><?= $c['pago_fijo'] ? 'pago fijo + bono' : 'horas + bono' ?></td><td class="valor"><?= e(fmt_pesos($c['total_quincena'])) ?></td></tr>

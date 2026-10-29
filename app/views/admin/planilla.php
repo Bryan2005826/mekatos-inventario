@@ -37,7 +37,7 @@ $num = fn($v) => (float)$v == 0 ? '' : (string)(0 + (float)$v);
     <?php if ($bloqueada): ?>
       <p class="aviso aviso-ok">Pagada el <?= e(fmt_fecha_hora($p['pagada'])) ?> por <?= e(fmt_pesos($p['total_pagado'])) ?>. Las jornadas de esta quincena quedaron bloqueadas.</p>
     <?php endif; ?>
-    <form method="post" action="<?= e(url('admin/planillas/guardar')) ?>" class="form" id="form-planilla" data-minutos="<?= (int)$c['minutos'] ?>">
+    <form method="post" action="<?= e(url('admin/planillas/guardar')) ?>" class="form" id="form-planilla" data-minutos="<?= (int)$c['minutos'] ?>" data-desc-loza="<?= (float)$c['desc_loza'] ?>">
       <?= Csrf::field() ?>
       <input type="hidden" name="id" value="<?= (int)$p['id'] ?>">
       <fieldset <?= $bloqueada ? 'disabled' : '' ?> class="form sin-borde">
@@ -63,6 +63,7 @@ $num = fn($v) => (float)$v == 0 ? '' : (string)(0 + (float)$v);
         <table class="tabla tabla-cuentas" aria-live="polite">
           <tr><td data-etiqueta-pago><?= $c['pago_fijo'] ? 'Pago fijo' : 'Pago por horas' ?></td><td class="num" data-salida="pago"><?= e(fmt_pesos($c['pago_horas'])) ?></td></tr>
           <tr><td>+ Bono</td><td class="num" data-salida="bono"><?= e(fmt_pesos($c['bono'])) ?></td></tr>
+          <?php if ($c['desc_loza'] > 0): ?><tr><td>− Loza partida (incluida abajo)</td><td class="num"><?= e(fmt_pesos($c['desc_loza'])) ?></td></tr><?php endif; ?>
           <tr><td>− Descuentos</td><td class="num" data-salida="descuentos"><?= e(fmt_pesos($c['descuentos'])) ?></td></tr>
           <tr class="fila-total"><td>Total a entregar</td><td class="num" data-salida="entregar"><?= e(fmt_pesos($c['total_entregar'])) ?></td></tr>
         </table>
@@ -98,6 +99,46 @@ $num = fn($v) => (float)$v == 0 ? '' : (string)(0 + (float)$v);
     <?php endif; ?>
   </section>
 </div>
+
+<section class="bloque">
+  <h2>Loza partida en esta quincena</h2>
+  <?php if (!$c['roturas']): ?>
+    <p class="vacio">No se ha reportado loza partida por <?= e($p['nombre']) ?> en esta quincena.</p>
+  <?php else: ?>
+    <p class="sub">Lo reportaron en los inventarios. Ponle precio por unidad para descontarlo; con precio 0 no se cobra.</p>
+    <div class="tabla-envoltura"><table class="tabla">
+      <thead><tr><th>Fecha</th><th>Elemento</th><th class="num">Cantidad</th><th>Nota</th><th>Precio por unidad</th><th class="num">Total</th><th></th></tr></thead>
+      <tbody>
+      <?php foreach ($c['roturas'] as $r): ?>
+        <tr>
+          <td><a href="<?= e(url('admin/inventarios/ver', ['id' => $r['inventario_id']])) ?>"><?= e(fmt_fecha($r['fecha'])) ?></a><br><span class="meta"><?= e($r['area']) ?></span></td>
+          <td><strong><?= e($r['item_nombre']) ?></strong></td>
+          <td class="num"><?= (int)$r['cantidad'] ?></td>
+          <td><?= e($r['observacion']) ?></td>
+          <td>
+            <form method="post" action="<?= e(url('admin/planillas/rotura')) ?>" class="stock-acciones">
+              <?= Csrf::field() ?><input type="hidden" name="planilla" value="<?= (int)$p['id'] ?>"><input type="hidden" name="rotura" value="<?= (int)$r['id'] ?>">
+              <input type="number" name="precio" min="0" step="100" value="<?= (int)$r['precio_unitario'] ?>" aria-label="Precio por unidad de <?= e($r['item_nombre']) ?>" <?= $bloqueada ? 'disabled' : '' ?>>
+              <button class="btn btn-secundario btn-sm" type="submit" <?= $bloqueada ? 'disabled' : '' ?>>Guardar</button>
+            </form>
+          </td>
+          <td class="num"><strong><?= e(fmt_pesos((int)$r['cantidad'] * (float)$r['precio_unitario'])) ?></strong></td>
+          <td><?php if (!$bloqueada): ?>
+            <details><summary>Quitar</summary>
+              <form method="post" action="<?= e(url('admin/planillas/rotura')) ?>" class="form">
+                <?= Csrf::field() ?><input type="hidden" name="planilla" value="<?= (int)$p['id'] ?>"><input type="hidden" name="rotura" value="<?= (int)$r['id'] ?>"><input type="hidden" name="accion" value="quitar">
+                <input name="motivo" required minlength="3" maxlength="200" placeholder="No fue él / apareció" aria-label="Motivo">
+                <button class="btn btn-peligro btn-sm" type="submit">Quitar de la planilla</button>
+              </form>
+            </details>
+          <?php endif; ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+      <tfoot><tr><th colspan="5">Total loza partida</th><th class="num"><?= e(fmt_pesos($c['desc_loza'])) ?></th><th></th></tr></tfoot>
+    </table></div>
+  <?php endif; ?>
+</section>
 
 <section class="bloque vista-hoja">
   <h2>Así se imprime</h2>

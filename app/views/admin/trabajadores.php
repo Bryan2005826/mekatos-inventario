@@ -1,5 +1,5 @@
 <div class="encabezado">
-  <h1>Trabajadores</h1>
+  <h1>Trabajadores · <?= e($local['nombre']) ?></h1>
   <p class="sub">Agrega a cada persona nueva aquí: se le genera su PIN. Para retirar a alguien, entra a Editar y desactívalo (o elimínalo si no tiene registros).</p>
 </div>
 
@@ -18,7 +18,7 @@
     <?= Csrf::field() ?>
     <label class="campo"><span>Nombre</span><input name="nombre" required maxlength="60"></label>
     <label class="campo"><span>Documento (opcional)</span><input name="documento" maxlength="30" inputmode="numeric"></label>
-    <button class="btn btn-primario" type="submit">Agregar y generar PIN</button>
+    <button class="btn btn-primario" type="submit">Agregar a <?= e($local['nombre']) ?> y generar PIN</button>
   </form>
 </section>
 
